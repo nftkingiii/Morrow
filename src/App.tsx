@@ -13,6 +13,7 @@ import {
   LockKeyhole,
   RotateCcw,
   ShieldCheck,
+  ShieldPlus,
   Wallet,
 } from "lucide-react";
 import {
@@ -28,13 +29,17 @@ import {
   connectPrivacyWallet,
   fundActions,
   readMorrowConfig,
+  readShieldToken,
   releaseActions,
+  shieldActions,
   simulateActions,
   submitActions,
+  WalletConnectionError,
 } from "./lib/strk20";
 
 type Mode = "operator" | "claim";
 type Notice = { tone: "success" | "warning" | "error"; message: string } | null;
+type WalletState = "disconnected" | "connecting" | "no-wallet" | "unsupported-wallet" | "wrong-network" | "rejected" | "ready" | "connection-error";
 
 const blankDraft: GrantDraft = {
   title: "",
@@ -55,6 +60,7 @@ function ActionButton({ pending, children }: { pending: boolean; children: React
 
 function App() {
   const config = useMemo(readMorrowConfig, []);
+  const shieldToken = useMemo(readShieldToken, []);
   const [mode, setMode] = useState<Mode>("operator");
   const [draft, setDraft] = useState<GrantDraft>(blankDraft);
   const [grants, setGrants] = useState<GrantRecord[]>([illustrativeGrant]);
@@ -63,6 +69,11 @@ function App() {
   const [claimCommitment, setClaimCommitment] = useState(illustrativeGrant.claimCommitment);
   const [claimSecret, setClaimSecret] = useState("");
   const [account, setAccount] = useState<WalletAccountV6 | null>(null);
+  const [walletState, setWalletState] = useState<WalletState>("disconnected");
+  const [walletName, setWalletName] = useState("");
+  const [walletApiVersion, setWalletApiVersion] = useState("");
+  const [shieldAmount, setShieldAmount] = useState("");
+  const [shieldPending, setShieldPending] = useState(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -74,13 +85,48 @@ function App() {
     setNotice(null);
     try {
       setPending(true);
+      setWalletState("connecting");
       const next = await connectPrivacyWallet();
-      setAccount(next);
-      setNotice({ tone: "success", message: "Privacy wallet connected and STRK20 capability confirmed." });
+      setAccount(next.account);
+      setWalletName(next.walletName);
+      setWalletApiVersion(next.walletApiVersion);
+      setWalletState("ready");
+      setNotice({ tone: "success", message: `${next.walletName} is privacy ready on Mainnet (Wallet API ${next.walletApiVersion}). No balance access was requested.` });
     } catch (error) {
+      setAccount(null);
+      setWalletState(error instanceof WalletConnectionError ? error.reason : "connection-error");
       setNotice({ tone: "error", message: error instanceof Error ? error.message : "Wallet connection failed." });
     } finally {
       setPending(false);
+    }
+  }
+
+  async function shield(event: FormEvent) {
+    event.preventDefault();
+    setNotice(null);
+    if (!shieldToken) {
+      setNotice({ tone: "error", message: "Set VITE_TOKEN_ADDRESS before shielding. Morrow fails closed when the token is unconfigured." });
+      return;
+    }
+    if (!account || walletState !== "ready") {
+      setNotice({ tone: "error", message: "Connect a privacy-ready Mainnet wallet before shielding." });
+      return;
+    }
+    if (!/^\d+(\.\d{1,6})?$/.test(shieldAmount) || Number(shieldAmount) <= 0) {
+      setNotice({ tone: "error", message: "Enter a positive token amount with at most six decimals." });
+      return;
+    }
+    try {
+      setShieldPending(true);
+      const actions = shieldActions(shieldToken, shieldAmount);
+      await simulateActions(account, actions);
+      const result = await submitActions(account, actions);
+      setShieldAmount("");
+      setNotice({ tone: "success", message: `Shield submitted: ${truncate(result.transaction_hash, 10, 8)}. Wait about 10 blocks before using the new note.` });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Shield request failed." });
+    } finally {
+      setShieldPending(false);
     }
   }
 
@@ -174,10 +220,10 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Morrow home">Morrow<span>.</span></a>
-        <div className="network-pill"><span />Starknet Mainnet</div>
+        <div className={`network-pill wallet-${walletState}`}><span />{walletState === "ready" ? "Privacy ready · Mainnet" : "Starknet Mainnet"}</div>
         <button className="button button-wallet" onClick={connect} disabled={pending || Boolean(account)}>
           <Wallet size={16} aria-hidden="true" />
-          {account ? truncate(account.address) : "Connect privacy wallet"}
+          {account ? truncate(account.address) : walletState === "connecting" ? "Connecting…" : "Connect privacy wallet"}
         </button>
       </header>
 
@@ -255,6 +301,25 @@ function App() {
             </div>
             {selected.transactionHash && config ? <a className="explorer-link" href={`${config.explorerBaseUrl}/tx/${selected.transactionHash}`} target="_blank" rel="noreferrer">View transaction <ArrowRight size={14} /></a> : null}
           </aside>
+        </section>
+
+        <section className="shield-panel" aria-labelledby="shield-title">
+          <div className="shield-copy">
+            <ShieldPlus size={21} aria-hidden="true" />
+            <div>
+              <h2 id="shield-title">Shield before you fund</h2>
+              <p>Shielding is a separate public-to-private operation. Your wallet will show two public prompts: first ERC-20 approval, then the shield transaction.</p>
+            </div>
+          </div>
+          <form onSubmit={shield} className="shield-form">
+            <label htmlFor="shield-amount">Amount</label>
+            <div><input id="shield-amount" inputMode="decimal" value={shieldAmount} onChange={(event) => setShieldAmount(event.target.value)} placeholder="100.00" aria-describedby="shield-help" /><span>USDC</span></div>
+            <button className="button button-primary" disabled={shieldPending || walletState !== "ready"}>{shieldPending ? "Confirm in wallet…" : "Start two-step shield"}</button>
+          </form>
+          <div className="shield-status" id="shield-help">
+            <strong>{walletState === "ready" ? `${walletName} · API ${walletApiVersion}` : "Privacy wallet required"}</strong>
+            <span>New notes mature after roughly 10 blocks. Shielding separately avoids publicly tying this deposit to a specific milestone.</span>
+          </div>
         </section>
 
         {secrets ? (

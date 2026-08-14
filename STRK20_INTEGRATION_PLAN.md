@@ -45,9 +45,9 @@ Do not attribute private activity from transaction `sender`: that is the relayer
 
 Freshness check on 2026-08-14 found: get-starknet `next` moved to `6.0.4`; `packages/sub_account_anonymizer` disappeared; `packages/shadow_account_anonymizer` appeared; Wallet API stable remains `0.10.3`. Neither package-path change is required for Morrow's route.
 
-## 5. Phase 1 — correct wallet connection and first shielded flow
+## 5. Phase 1 — correct wallet connection and first shielded flow — automated checkpoint complete 2026-08-14; manual Ready gate pending
 
-Status: pending approval.
+Status: app changes and headless/browser checks complete; waiting for the developer's Ready-wallet verification before Phase 2.
 
 1. Update `package.json` and `pnpm-lock.yaml` to the stable tested get-starknet `6.0.3` + types `0.10.3` combination.
 2. Replace global wallet scanning in `src/lib/strk20.ts` with get-starknet v6 discovery and a typed `WalletAccountV6` connection.
@@ -103,7 +103,8 @@ Status: outside skill execution; project-owned.
 
 ## 10. Open items to re-verify at build time
 
-- Whether get-starknet `6.0.3` remains the safest stable-spec combination after `6.0.4` moved to beta types.
+- `get-starknet-discovery@6.0.3` resolves wallet-standard `6.0.4` through a caret dependency, while starknet.js `10.4.0` carries its own older wallet-standard type identity. Phase 1 contains that structurally compatible runtime seam in one explicit adapter cast in `src/lib/strk20.ts`; re-check before upgrading either side.
+- Manual Ready gate remains: capability detection without balance consent, Mainnet connection, unsupported-wallet degradation, and a minimal shield transaction.
 - Ready version and Xverse dapp-facing Wallet API availability.
 - Current WalletAccount guide methods and capability-detection response shape.
 - Current pool fee, note maturity behavior, and paymaster fee UX.

@@ -26,21 +26,24 @@ Ship a judge-openable Starknet mainnet application for public milestone grants w
 
 - React/Vite grant operator and claimant workspace.
 - Browser-only secret generation and domain-separated commitments.
-- Starknet Wallet API adapter with simulate-before-submit behavior.
+- get-starknet v6 discovery and a typed `WalletAccountV6` adapter with consent-free Wallet API `0.10.3+` detection.
+- Explicit disconnected, missing-wallet, unsupported-wallet, wrong-network, rejected, ready, and connection-error handling.
+- A separate two-prompt shield flow with note-maturity and public-correlation warnings.
 - Cairo MorrowEscrow draft: deposit, claim, expiry recovery, read-back.
 - Proof matrix, source index, threat model, tests, and hackathon metadata.
+- Public repository: https://github.com/nftkingiii/Morrow
+- STRK20 registration applied upstream as commit `b5fe114` from https://github.com/starkience/strk20-hackathon/pull/18.
 
 ## Unverified / blocked
 
 - Scarb and Starknet Foundry are not installed locally; Cairo compilation and contract tests have not run.
 - Privacy-enabled wallet behavior has not been exercised in this environment.
 - STRK20 pool, token, and MorrowEscrow mainnet addresses are not configured.
-- No contract deployment, verified source, mainnet transaction, public repository, or live demo exists yet.
+- No contract deployment, verified source, mainnet transaction, or live demo exists yet.
 
 ## Next
 
-1. Install pinned Cairo tooling and compile the contract.
-2. Add full contract tests for caller authorization, expiry boundaries, replay protection, and domain separation.
-3. Confirm the exact live STRK20 pool address and wallet capability with the builders group.
-4. Deploy and verify MorrowEscrow, then populate `.env.local` and `strk20.json`.
-5. Execute the funding, claim, and recovery proof transactions through the live DApp.
+1. Run the Phase 1 Ready-wallet manual gate and confirm capability detection causes no balance-consent prompt.
+2. Complete one minimal shield and confirm both ERC-20 approval and shield prompts plus note maturity.
+3. After explicit Phase 2 approval, implement the grant lifecycle app integration and its proof/read-back states.
+4. Separately install Cairo tooling, compile/test/audit the project-owned contract, then request fresh permission before any deployment or mainnet funding.
