@@ -85,6 +85,22 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
     throw new WalletConnectionError("no-wallet", "No Starknet wallet was detected. Install Ready, then refresh this page.");
   }
 
+  const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
+  if (!rpcUrl) {
+    throw new WalletConnectionError("connection-error", "Set VITE_STARKNET_RPC_URL to an Alchemy Starknet Mainnet endpoint before connecting.");
+  }
+  const provider = new RpcProvider({ nodeUrl: rpcUrl });
+  let account: WalletAccountV6;
+  try {
+    // Ready requires the dapp to be authorized before privileged Wallet API
+    // capability queries. WalletAccountV6.connect performs standard:connect.
+    const walletForStarknet = wallet as unknown as Parameters<typeof WalletAccountV6.connect>[1];
+    account = await WalletAccountV6.connect(provider, walletForStarknet);
+  } catch (error) {
+    if (wasRejected(error)) throw new WalletConnectionError("rejected", "Wallet connection was rejected. No permissions or balance access were requested.");
+    throw new WalletConnectionError("connection-error", error instanceof Error ? error.message : "Privacy wallet connection failed.");
+  }
+
   let supportedVersions: string[];
   try {
     supportedVersions = (await wallet.features["starknet:walletApi"].request({ type: "wallet_supportedWalletApi" })).map(String);
@@ -103,22 +119,7 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
     throw new WalletConnectionError("wrong-network", "Morrow Phase 1 requires Starknet Mainnet. Switch the wallet network and reconnect.");
   }
 
-  const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
-  if (!rpcUrl) {
-    throw new WalletConnectionError("connection-error", "Set VITE_STARKNET_RPC_URL to an Alchemy Starknet Mainnet endpoint before connecting.");
-  }
-  const provider = new RpcProvider({ nodeUrl: rpcUrl });
-  try {
-    // get-starknet 6.0.3 and starknet.js 10.4.0 compile the same wallet-standard
-    // runtime shape against different types-js identities. Keep that seam here.
-    const walletForStarknet = wallet as unknown as Parameters<typeof WalletAccountV6.connect>[1];
-    const account = await WalletAccountV6.connect(provider, walletForStarknet);
-    return { account, walletName: wallet.name, walletApiVersion: supportedVersions.at(-1) ?? "0.10.3" };
-  } catch (error) {
-    if (error instanceof WalletConnectionError) throw error;
-    if (wasRejected(error)) throw new WalletConnectionError("rejected", "Wallet connection was rejected. No permissions or balance access were requested.");
-    throw new WalletConnectionError("connection-error", error instanceof Error ? error.message : "Privacy wallet connection failed.");
-  }
+  return { account, walletName: wallet.name, walletApiVersion: supportedVersions.at(-1) ?? "0.10.3" };
 }
 
 export function shieldActions(tokenAddress: string, amount: string): STRK20_ACTION[] {
