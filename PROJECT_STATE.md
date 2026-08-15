@@ -1,16 +1,18 @@
 # Morrow project state
 
-Updated: 2026-08-14
+Updated: 2026-08-15
 
 ## Goal
 
-Ship a judge-openable Starknet mainnet application for public milestone grants with private recipient identity and payout history through STRK20.
+Ship a judge-openable Starknet mainnet application whose core decision is a truthful STRK20 privacy preflight for milestone funding, backed by a real wallet-led grant flow.
 
 ## Confirmed
 
 - Private Sprint closes August 31, 2026 at 23:59 UTC.
 - Judging weights: STRK20 depth 30%, working mainnet product 30%, innovation 25%, documentation/open source 15%.
 - STRK20 documents the Wallet API plus app-specific anonymizer path for private DApps.
+- The official sprint requires a public/open-source repo, public demo, three-minute video, and three successful mainnet transactions touching the pool to be scored.
+- Official IDEA-10, IDEA-12, and IDEA-25 are non-exclusive inspirations for Morrow's payout, milestone, and preflight directions.
 - Anonymizer helper activity and amounts remain public; the initiating user and resulting note owner are hidden.
 - The documented escrow example is unofficial and unaudited. Morrow owns its review risk.
 
@@ -21,6 +23,7 @@ Ship a judge-openable Starknet mainnet application for public milestone grants w
 - No recipient address is stored by MorrowEscrow.
 - Independent claim and recovery secrets create mutually exclusive resolution paths.
 - Missing live addresses puts the UI in clearly labelled preview mode.
+- The preflight compares transaction structure only. It must never present a numeric anonymity score or a privacy guarantee without verified live data.
 
 ## Implemented
 
@@ -29,6 +32,7 @@ Ship a judge-openable Starknet mainnet application for public milestone grants w
 - get-starknet v6 discovery and a typed `WalletAccountV6` adapter with consent-free Wallet API `0.10.3+` detection.
 - Explicit disconnected, missing-wallet, unsupported-wallet, wrong-network, rejected, ready, and connection-error handling.
 - A separate two-prompt shield flow with note-maturity and public-correlation warnings.
+- A deterministic preflight for separate versus bundled shield/fund routes, with explicit public/private boundaries and no fabricated live metrics.
 - Cairo MorrowEscrow draft: deposit, claim, expiry recovery, read-back.
 - Proof matrix, source index, threat model, tests, and hackathon metadata.
 - Public repository: https://github.com/nftkingiii/Morrow
@@ -40,6 +44,7 @@ Ship a judge-openable Starknet mainnet application for public milestone grants w
 - Privacy-enabled wallet behavior has not been exercised in this environment.
 - STRK20 pool, token, and MorrowEscrow mainnet addresses are not configured.
 - No contract deployment, verified source, mainnet transaction, or live demo exists yet.
+- `pnpm audit` reports one low-severity, development-only `esbuild` advisory on Windows (GHSA-g7r4-m6w7-qqqr); no high or critical advisory was reported. Reassess when a compatible Vite/esbuild update is available.
 
 ## Next
 
@@ -47,3 +52,4 @@ Ship a judge-openable Starknet mainnet application for public milestone grants w
 2. Complete one minimal shield and confirm both ERC-20 approval and shield prompts plus note maturity.
 3. After explicit Phase 2 approval, implement the grant lifecycle app integration and its proof/read-back states.
 4. Separately install Cairo tooling, compile/test/audit the project-owned contract, then request fresh permission before any deployment or mainnet funding.
+5. Before submission, replace every empty `strk20.json` field only with fresh live evidence and re-open official requirements.

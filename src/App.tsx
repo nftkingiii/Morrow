@@ -14,6 +14,7 @@ import {
   RotateCcw,
   ShieldCheck,
   ShieldPlus,
+  Split,
   Wallet,
 } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ import {
   type GrantRecord,
   type GrantSecrets,
 } from "./lib/grants";
+import { privacyPreflight, type FundingRoute } from "./lib/privacy";
 import {
   connectPrivacyWallet,
   fundActions,
@@ -73,6 +75,7 @@ function App() {
   const [walletName, setWalletName] = useState("");
   const [walletApiVersion, setWalletApiVersion] = useState("");
   const [shieldAmount, setShieldAmount] = useState("");
+  const [fundingRoute, setFundingRoute] = useState<FundingRoute>("separate");
   const [shieldPending, setShieldPending] = useState(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
@@ -80,6 +83,7 @@ function App() {
 
   const selected = grants.find((grant) => grant.id === selectedId) ?? grants[0];
   const previewMode = !config || !account;
+  const preflight = privacyPreflight(fundingRoute, draft.amount || selected.amount);
 
   async function connect() {
     setNotice(null);
@@ -230,12 +234,33 @@ function App() {
       <main id="top">
         <section className="hero">
           <div>
-            <h1>Fund the work.<br /><em>Not the wallet trail.</em></h1>
-            <p>Morrow gives grant operators public milestone accountability with private recipient identity and payout history, powered by STRK20.</p>
+            <h1>Know the trail<br /><em>before you fund.</em></h1>
+            <p>Morrow is a privacy preflight for milestone payouts: it makes the public trail and the STRK20 private boundary clear before a grant operator asks a wallet to act.</p>
           </div>
           <div className="hero-proof">
             <ShieldCheck size={22} aria-hidden="true" />
             <div><strong>Public terms. Private recipient.</strong><span>Deposits, helper amounts, and timing remain visible.</span></div>
+          </div>
+        </section>
+
+        <section className="preflight-panel" aria-labelledby="preflight-title">
+          <div className="preflight-title">
+            <Split size={20} aria-hidden="true" />
+            <div><h2 id="preflight-title">Privacy preflight</h2><p>Static transaction-structure guidance, not a live anonymity score or a privacy guarantee.</p></div>
+          </div>
+          <div className="route-picker" role="group" aria-label="Funding route">
+            <button className={fundingRoute === "separate" ? "active" : ""} type="button" onClick={() => setFundingRoute("separate")}>
+              <strong>Shield separately</strong><span>Recommended</span>
+            </button>
+            <button className={fundingRoute === "bundled" ? "active" : ""} type="button" onClick={() => setFundingRoute("bundled")}>
+              <strong>Bundle shield + fund</strong><span>Fewer steps</span>
+            </button>
+          </div>
+          <div className={`preflight-report preflight-${preflight.level}`}>
+            <div><span className="risk-label">{preflight.level === "high" ? "Higher correlation risk" : "Lower direct correlation"}</span><h3>{preflight.heading}</h3><p>{preflight.summary}</p></div>
+            <div className="signal-list"><strong>Still public</strong>{preflight.publicSignals.map((signal) => <span key={signal}>{signal}</span>)}</div>
+            <div className="signal-list"><strong>Private boundary</strong>{preflight.privateBoundary.map((boundary) => <span key={boundary}>{boundary}</span>)}</div>
+            <p className="preflight-next">{preflight.nextStep}</p>
           </div>
         </section>
 
@@ -262,7 +287,7 @@ function App() {
 
             {mode === "operator" ? (
               <form className="grant-form" onSubmit={createGrant} noValidate>
-                <div className="form-title"><span>01</span><div><h2>Create a private milestone</h2><p>The title, deliverable, amount, and deadline are public. The recipient is not.</p></div></div>
+                <div className="form-title"><span>01</span><div><h2>Create a private milestone</h2><p>The title, deliverable, amount, and deadline are public. The recipient is not. The preflight above shows the funding-trail trade-off.</p></div></div>
                 <label>Grant title<input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Open-source privacy research" />{errors.title ? <small className="field-error">{errors.title}</small> : null}</label>
                 <label>Milestone deliverable<textarea value={draft.milestone} onChange={(e) => setDraft({ ...draft, milestone: e.target.value })} placeholder="Describe the verifiable outcome" rows={3} />{errors.milestone ? <small className="field-error">{errors.milestone}</small> : null}</label>
                 <div className="form-grid">

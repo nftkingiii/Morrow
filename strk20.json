@@ -1,9 +1,6 @@
 {
-  "name": "Morrow",
-  "description": "Public milestone grants with private recipient identity and payout history, powered by STRK20.",
-  "demo_url": "",
-  "demo_video": "",
-  "starknet_address": "",
+  "transactions": [],
   "contracts": [],
-  "transactions": []
+  "demo_video": "",
+  "demo_url": ""
 }

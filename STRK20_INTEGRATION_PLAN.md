@@ -10,6 +10,7 @@ Generated 2026-08-14 by the `strk20-privacy-integration` skill. Re-verify all pa
 - Product actions: `src/App.tsx:87` creates/funds a milestone and `src/App.tsx:137` claims or recovers it.
 - Contract surface: `contracts/src/morrow_escrow.cairo:127` exposes `privacy_invoke`; deposit and release state transitions start at lines 167 and 197.
 - Privacy goal: public milestone terms with no public link to the operator or recipient wallet; claim and recovery should resolve into private STRK20 notes.
+- Privacy-preflight addition (2026-08-15): `src/lib/privacy.ts` models the known transaction-structure difference between bundled and separated shielding. It is static guidance only; it does not read private balances, viewing keys, notes, proofs, or a live anonymity set.
 - Environment: Starknet mainnet is the sprint target. Ready is the required first wallet. Xverse support must be re-verified before it is presented as available.
 
 ## 2. Chosen route: Privacy Wallet API plus Morrow anonymizer
@@ -65,11 +66,12 @@ Status: pending Phase 1 manual confirmation.
 
 1. Keep action construction in `src/lib/strk20.ts`; validate fixed pool, token, helper, chain, operation, amount, expiry, and felt inputs before wallet submission.
 2. In `src/App.tsx:87`, require a mature shielded balance before building `withdraw → privacy_invoke(Deposit)`; simulate before submission and present the helper's public amount/activity boundary.
-3. In `src/App.tsx:137`, use `open note → privacy_invoke(Claim|Recover)` and label that open-note amount as public while ownership stays hidden.
-4. Read the pool fee from `get_fee_amount`; never hardcode it. Show pool fee separately from sponsored gas and prevent impossible amounts.
-5. Add bounded transaction waiting with “submitted” fallback and explorer link; normalize addresses with numeric equality before comparing.
-6. Preserve secrets in memory only. Never place claim/recovery preimages in URLs, analytics, logs, screenshots, local storage, or committed files.
-7. Add tests for action shape, amount conversion, expiry boundaries, unsupported-wallet degradation, rejected wallet calls, and preview-versus-live labeling.
+3. Keep `src/lib/privacy.ts` and the preflight UI as a mandatory explanation before funding: the separate shield route is the default, and any bundled path must state its direct deposit-to-milestone correlation cost. Do not turn it into a live score without a verified data source and a separately approved scope.
+4. In `src/App.tsx:137`, use `open note → privacy_invoke(Claim|Recover)` and label that open-note amount as public while ownership stays hidden.
+5. Read the pool fee from `get_fee_amount`; never hardcode it. Show pool fee separately from sponsored gas and prevent impossible amounts.
+6. Add bounded transaction waiting with “submitted” fallback and explorer link; normalize addresses with numeric equality before comparing.
+7. Preserve secrets in memory only. Never place claim/recovery preimages in URLs, analytics, logs, screenshots, local storage, or committed files.
+8. Add tests for action shape, amount conversion, expiry boundaries, unsupported-wallet degradation, rejected wallet calls, preview-versus-live labeling, and preflight wording.
 
 Manual gate: fund one milestone through the configured helper, claim a separate active milestone, recover a separate expired milestone, and confirm all three results from wallet state and explorer/read-back evidence.
 

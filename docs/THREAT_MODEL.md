@@ -9,6 +9,7 @@ Morrow controls real token movement. This document is a deployment blocker, not 
 - Correct expiry and resolution state
 - Wallet approval and STRK20 proof requests
 - Public evidence that must not overstate privacy
+- Preflight reports whose labels must not be mistaken for live chain analysis
 
 ## Trust boundaries
 
@@ -31,6 +32,7 @@ Morrow controls real token movement. This document is a deployment blocker, not 
 6. A malicious entry uses a zero token, zero amount, zero commitment, or zero note id.
 7. A wallet reports connection but does not implement STRK20 0.10.3 methods.
 8. The UI is configured with the wrong pool, token, helper, or network.
+9. A user treats the preflight's lower-correlation label as a guarantee that their activity cannot be correlated.
 
 ## Open blockers before mainnet funding
 
@@ -40,3 +42,4 @@ Morrow controls real token movement. This document is a deployment blocker, not 
 - Test Ready and Xverse explicitly; reject every unsupported wallet cleanly.
 - Confirm that preview mode cannot be mistaken for a transaction.
 - Add production CSP and verify no secrets enter logs, analytics, URLs, or screenshots.
+- Before representing any live privacy measurement, add an independently verified chain-data source, disclose its limits, and test stale/unavailable data fail-closed.

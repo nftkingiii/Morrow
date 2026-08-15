@@ -1,40 +1,48 @@
 # Morrow
 
-Morrow is a private milestone-grant protocol on Starknet. Grant terms remain public; the recipient identity and payout trail stay inside STRK20.
+Morrow is a privacy preflight for STRK20 milestone payouts. Before an operator funds a grant, it makes the transaction structure legible: what is public, what remains inside STRK20, and whether the selected funding sequence makes the deposit trivially linkable to the milestone.
 
-The core lifecycle is deliberately narrow:
+It is a variation inspired by the STRK20 Private Sprint's non-exclusive [IDEA-10 (business payouts)](https://github.com/starkience/strk20-hackathon/blob/main/IDEAS.md#10-business-payouts-api), [IDEA-12 (marketplace escrow)](https://github.com/starkience/strk20-hackathon/blob/main/IDEAS.md#12-marketplace-escrow), and [IDEA-25 (transaction privacy simulator)](https://github.com/starkience/strk20-hackathon/blob/main/IDEAS.md#25-transaction-privacy-simulator). Morrow applies the simulator idea specifically to milestone grants; the ideas are not exclusive.
 
-1. An operator shields funds and deposits a milestone into the `MorrowEscrow` anonymizer.
-2. A recipient who knows the claim secret can release the milestone into a private note before expiry.
-3. If the milestone expires, the operator can use a separate recovery secret to return the funds to a private note.
+## What the app does today
+
+1. Lets an operator draft public milestone terms without recording a recipient address.
+2. Compares a bundled shield-and-fund path with a separate shield-then-fund path.
+3. Explains the known public signals and STRK20 private boundary for that choice.
+4. Connects a privacy-capable Starknet wallet without requesting shielded-balance consent merely to detect support.
+5. Offers a separate, two-prompt shield flow: ERC-20 approval followed by shield.
+
+The preflight is deliberately static. It does not claim to calculate a live anonymity set, trace an observer, or guarantee privacy. Those claims would require independently verified live pool/indexer evidence.
 
 ## Privacy boundary
 
-Morrow does **not** claim that everything is hidden. In the current STRK20 anonymizer model:
+| Inside STRK20 | Public on Starknet |
+| --- | --- |
+| Sender and receiver of a private transfer | Shield and unshield ERC-20 amounts |
+| Transfer amount and token type | That an address interacted with the pool |
+| Note ownership and later private movement | Timing of pool interactions |
+| Recipient identity in Morrow's public grant record | Morrow helper activity, grant terms, amount, deadline, and timing |
 
-- Public: grant title and deliverable in the application, helper contract activity, escrowed token, amount, deadline, and timing.
-- Private: the operator behind the pool action, recipient address, ownership of the resulting note, and the recipient's later private transfers.
-- Secret: claim and recovery preimages. Only their domain-separated Poseidon commitments are stored on-chain.
+Shielding and funding in one transaction context makes the depositor, public amount, and milestone action easy to correlate. Shielding separately, waiting for the note to mature, then funding from existing private balance avoids that direct same-transaction link but does not make public legs disappear. [STRK20's composition guidance](https://strk20-by-example.org/what-is-strk20) is the source for this distinction.
 
-This is an experimental hackathon build. The escrow pattern is based on the unofficial worked STRK20 escrow example and has not been audited.
+Morrow never handles viewing keys, note secrets, or proofs. The wallet performs those duties. Deposit screening is protocol-enforced; this project is not a screening workaround and makes no compliance guarantee.
 
 ## Architecture
 
 ```text
-operator private note
+operator chooses a funding sequence
         |
-        | withdraw to helper + privacy_invoke(Deposit)
         v
-MorrowEscrow [claim commitment, recovery commitment, amount, expiry]
+Morrow preflight: public signals + private boundary (static, local)
         |
-        |-- before expiry + claim secret ----> recipient private open note
-        |
-        `-- after expiry + recovery secret --> operator private open note
+        | separate shield (recommended) -> maturity -> later grant action
+        v
+privacy-capable wallet -> STRK20 pool -> Morrow helper (future reviewed deployment)
 ```
 
-The browser never handles a viewing key. A supported privacy wallet performs note discovery, proof generation, simulation, and submission through the Starknet Wallet API.
+The repository also contains a project-owned Cairo draft for milestone funding, claim, and expiry recovery. It is not deployed, audited, or part of a completed user flow. The STRK20 integration skill only changes app code; contract review, audit, deployment, and maintenance remain project-owned work.
 
-## Run the app
+## Run locally
 
 Requirements: Node.js 20+ and pnpm 11.11.0.
 
@@ -43,7 +51,7 @@ pnpm install --ignore-scripts
 pnpm dev
 ```
 
-Copy `.env.example` to `.env.local` only when verified mainnet addresses are available. Missing contract configuration keeps the interface in explicit preview mode; it never silently falls back to a fake transaction.
+Copy `.env.example` to `.env.local` only when verified mainnet addresses are available. Missing configuration keeps the interface in explicit preview mode; it does not fabricate transactions.
 
 ## Checks
 
@@ -52,7 +60,7 @@ pnpm check
 pnpm audit
 ```
 
-The Cairo contract additionally requires Scarb 2.17-compatible tooling and Starknet Foundry:
+The Cairo draft additionally requires compatible Scarb and Starknet Foundry tooling:
 
 ```bash
 cd contracts
@@ -60,29 +68,11 @@ scarb build
 snforge test
 ```
 
-Scarb and Starknet Foundry are not bundled with this repository.
+## STRK20 Private Sprint status
 
-## Mainnet evidence
+The exact official submission requirements and the current evidence ledger are in [docs/COMPETITION_REQUIREMENTS.md](docs/COMPETITION_REQUIREMENTS.md). At present, Morrow has no deployment, live demo, video, verified contract, or STRK20 mainnet transaction. `strk20.json` intentionally remains empty until those artifacts exist.
 
-No deployment or transaction is claimed until the following fields are populated from fresh evidence:
-
-- MorrowEscrow address and verified source link
-- Funding transaction from the live DApp
-- Recipient claim transaction
-- Expired-milestone recovery transaction
-- Public demo URL and exact deployed revision
-
-See [docs/PROOF_MATRIX.md](docs/PROOF_MATRIX.md) for the current gate.
-
-## Security
-
-- The two milestone secrets are generated with browser cryptographic randomness and kept in memory only.
-- Claim and recovery hashes use different Poseidon domain tags.
-- `privacy_invoke` accepts calls only from the configured STRK20 pool.
-- Claim and recovery are mutually exclusive terminal states.
-- The UI simulates live STRK20 actions before requesting submission.
-
-See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) before deploying or funding the contract.
+See [docs/PROOF_MATRIX.md](docs/PROOF_MATRIX.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and [STRK20_INTEGRATION_PLAN.md](STRK20_INTEGRATION_PLAN.md) before any deployment or funding.
 
 ## License
 
