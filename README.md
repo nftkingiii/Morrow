@@ -75,7 +75,7 @@ snforge test
 
 ## STRK20 Private Sprint status
 
-The exact official submission requirements and the current evidence ledger are in [docs/COMPETITION_REQUIREMENTS.md](docs/COMPETITION_REQUIREMENTS.md). At present, Morrow has no deployment, live demo, video, verified contract, or STRK20 mainnet transaction. `strk20.json` intentionally remains empty until those artifacts exist.
+The exact official submission requirements and the current evidence ledger are in [docs/COMPETITION_REQUIREMENTS.md](docs/COMPETITION_REQUIREMENTS.md). At present, Morrow has no deployment, live demo, video, or verified helper contract. It has two verified wallet-led STRK20 mainnet USDC shield transactions recorded in `strk20.json`; a third successful pool transaction is still required. The Evidence tab verifies their public receipts without reading shielded balances, notes, or viewing keys.
 
 See [docs/PROOF_MATRIX.md](docs/PROOF_MATRIX.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and [STRK20_INTEGRATION_PLAN.md](STRK20_INTEGRATION_PLAN.md) before any deployment or funding.
 

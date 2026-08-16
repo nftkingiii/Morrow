@@ -9,7 +9,7 @@ Source audit: 2026-08-15. This is a working checklist, not a substitute for reop
 | One registration pull request with public repository and Telegram | Verified | Upstream registration was applied as commit `b5fe114`; PR [#18](https://github.com/starkience/strk20-hackathon/pull/18) is closed because the entry landed upstream. |
 | Public, open-source repository with a license | Partial | Repository is public and contains an MIT license; recheck public access at submission. |
 | Public live demo | Missing | A clean-browser URL and deployed revision/read-back. |
-| Three successful Starknet **mainnet** transactions touching the STRK20 pool | Missing | Three hashes in root `strk20.json`, each independently checked against the canonical pool. |
+| Three successful Starknet **mainnet** transactions touching the STRK20 pool | Partial | Two wallet-led USDC shields in root `strk20.json`, independently checked against the canonical pool; one more successful pool transaction is required. |
 | Contract addresses, if deployed | Missing | Add verified addresses to `strk20.json`. |
 | Three-minute demo video | Missing | Add the public link to `strk20.json`. |
 | Documentation and open source | Partial | README, threat model, proof matrix, source index, and this checklist are present; live evidence is still absent. |
@@ -25,7 +25,7 @@ Morrow is not claiming ownership of a sprint prompt. The project is a non-exclus
 ## Submission procedure still required
 
 1. Deploy a public demo and verify its actual revision and loaded assets from a clean browser.
-2. Complete three small, successful **mainnet** wallet-led interactions that touch the canonical STRK20 pool. Do not substitute simulated, scripted, testnet, or merely included transactions.
+2. Complete one additional successful **mainnet** wallet-led interaction that touches the canonical STRK20 pool. Do not substitute simulated, scripted, testnet, or merely included transactions.
 3. Add only the resulting hashes, deployed contract addresses, demo video, and (only if auto-discovery fails) demo URL to root `strk20.json`.
 4. Record direct explorer/read-back proof in the proof matrix. The transaction sender may be a relayer; use the pool's `Deposit` event first indexed key for deposit attribution rather than transaction sender.
 5. Record a muted, three-minute demo that visibly shows the decision, STRK20 wallet action, and resulting evidence.

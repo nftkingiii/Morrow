@@ -8,7 +8,7 @@
 | Privacy claim | Recipient and resulting note owner are not in public grant storage | Contract storage/read-back and transaction explanation | Partial: design only |
 | Privacy preflight | Deterministic comparison of bundled versus separate shield/fund paths, without fabricated anonymity metrics | Unit tests, visible static disclaimer, and future live-data methodology if added | Partial: local UI and unit tests only |
 | Deployment | Public frontend on exact intended revision | Live URL, revision endpoint or build ID, asset checks | Missing |
-| Mainnet | At least three meaningful Starknet mainnet transactions | Fund, claim, recovery explorer links | Missing |
+| Mainnet | At least three meaningful Starknet mainnet transactions | Two wallet-led USDC shield receipts are verified; one further pool interaction is required | Partial |
 | Open source | Reproducible README, license, pinned dependencies | Public repository and commit | Partial: local only |
 | Submission | Root `strk20.json`, demo, video, addresses | Hub read-back at deadline | Missing |
 
