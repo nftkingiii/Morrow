@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { WalletAccountV6 } from "starknet";
 import {
@@ -26,9 +26,12 @@ import {
   type GrantRecord,
   type GrantSecrets,
 } from "./lib/grants";
-import { privacyPreflight, type FundingRoute } from "./lib/privacy";
+import { atomicMilestoneSteps, privacyPreflight, type FundingRoute } from "./lib/privacy";
+import { type PoolEvidence, verifyPoolTransactions } from "./lib/evidence";
+import submission from "../strk20.json";
 import {
   connectPrivacyWallet,
+  describeStrk20Error,
   fundActions,
   readMorrowConfig,
   readShieldToken,
@@ -39,7 +42,7 @@ import {
   WalletConnectionError,
 } from "./lib/strk20";
 
-type Mode = "operator" | "claim";
+type Workflow = "prepare" | "fund" | "resolve" | "evidence";
 type Notice = { tone: "success" | "warning" | "error"; message: string } | null;
 type WalletState = "disconnected" | "connecting" | "no-wallet" | "unsupported-wallet" | "wrong-network" | "rejected" | "ready" | "connection-error";
 
@@ -63,7 +66,7 @@ function ActionButton({ pending, children }: { pending: boolean; children: React
 function App() {
   const config = useMemo(readMorrowConfig, []);
   const shieldToken = useMemo(readShieldToken, []);
-  const [mode, setMode] = useState<Mode>("operator");
+  const [workflow, setWorkflow] = useState<Workflow>("prepare");
   const [draft, setDraft] = useState<GrantDraft>(blankDraft);
   const [grants, setGrants] = useState<GrantRecord[]>([illustrativeGrant]);
   const [selectedId, setSelectedId] = useState(illustrativeGrant.id);
@@ -77,13 +80,25 @@ function App() {
   const [shieldAmount, setShieldAmount] = useState("");
   const [fundingRoute, setFundingRoute] = useState<FundingRoute>("separate");
   const [shieldPending, setShieldPending] = useState(false);
+  const shieldRequestInFlight = useRef(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poolEvidence, setPoolEvidence] = useState<PoolEvidence[] | null>(null);
 
   const selected = grants.find((grant) => grant.id === selectedId) ?? grants[0];
   const previewMode = !config || !account;
   const preflight = privacyPreflight(fundingRoute, draft.amount || selected.amount);
+  const atomicSteps = atomicMilestoneSteps();
+
+  useEffect(() => {
+    const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
+    if (!rpcUrl || submission.transactions.length === 0) {
+      setPoolEvidence([]);
+      return;
+    }
+    void verifyPoolTransactions(rpcUrl, submission.transactions).then(setPoolEvidence).catch(() => setPoolEvidence([]));
+  }, []);
 
   async function connect() {
     setNotice(null);
@@ -108,6 +123,7 @@ function App() {
   async function shield(event: FormEvent) {
     event.preventDefault();
     setNotice(null);
+    if (shieldRequestInFlight.current) return;
     if (!shieldToken) {
       setNotice({ tone: "error", message: "Set VITE_TOKEN_ADDRESS before shielding. Morrow fails closed when the token is unconfigured." });
       return;
@@ -121,15 +137,20 @@ function App() {
       return;
     }
     try {
+      // React state does not disable a second click synchronously. This ref is
+      // set before the first await so only one wallet request can be created.
+      shieldRequestInFlight.current = true;
       setShieldPending(true);
       const actions = shieldActions(shieldToken, shieldAmount);
-      await simulateActions(account, actions);
+      // Submit the documented action directly; the wallet handles proof creation
+      // and shows an explicit transaction approval.
       const result = await submitActions(account, actions);
       setShieldAmount("");
       setNotice({ tone: "success", message: `Shield submitted: ${truncate(result.transaction_hash, 10, 8)}. Wait about 10 blocks before using the new note.` });
     } catch (error) {
-      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Shield request failed." });
+      setNotice({ tone: "error", message: describeStrk20Error(error) });
     } finally {
+      shieldRequestInFlight.current = false;
       setShieldPending(false);
     }
   }
@@ -170,6 +191,7 @@ function App() {
       setGrants((current) => [grant, ...current]);
       setSelectedId(grant.id);
       setClaimCommitment(grant.claimCommitment);
+      setWorkflow("fund");
       setDraft(blankDraft);
       setNotice({
         tone: transactionHash ? "success" : "warning",
@@ -234,15 +256,31 @@ function App() {
       <main id="top">
         <section className="hero">
           <div>
-            <h1>Know the trail<br /><em>before you fund.</em></h1>
-            <p>Morrow is a privacy preflight for milestone payouts: it makes the public trail and the STRK20 private boundary clear before a grant operator asks a wallet to act.</p>
+            <h1>Private milestones.<br /><em>Clear boundaries.</em></h1>
+            <p>Prepare a privacy-safe funding route, lock a milestone atomically, and preserve inspectable proof for every public edge.</p>
           </div>
           <div className="hero-proof">
             <ShieldCheck size={22} aria-hidden="true" />
-            <div><strong>Public terms. Private recipient.</strong><span>Deposits, helper amounts, and timing remain visible.</span></div>
+            <div><strong>Public terms. Private recipient.</strong><span>One workflow at a time. No fabricated privacy claims.</span></div>
           </div>
         </section>
 
+        <nav className="workflow-tabs" aria-label="Morrow workflows" role="tablist">
+          {([
+            ["prepare", "Prepare", "Choose the privacy-safe route"],
+            ["fund", "Fund", "Create and lock a milestone"],
+            ["resolve", "Resolve", "Claim or recover a milestone"],
+            ["evidence", "Evidence", "Review live proof and boundaries"],
+          ] as const).map(([id, label, description]) => (
+            <button key={id} type="button" role="tab" id={`${id}-tab`} aria-selected={workflow === id} aria-controls={`${id}-panel`} className={workflow === id ? "active" : ""} onClick={() => setWorkflow(id)}>
+              <strong>{label}</strong><span>{description}</span>
+            </button>
+          ))}
+        </nav>
+
+        {notice ? <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite"><CircleAlert size={17} />{notice.message}</div> : null}
+
+        {workflow === "prepare" ? <section className="workflow-content" id="prepare-panel" role="tabpanel" aria-labelledby="prepare-tab">
         <section className="preflight-panel" aria-labelledby="preflight-title">
           <div className="preflight-title">
             <Split size={20} aria-hidden="true" />
@@ -264,68 +302,22 @@ function App() {
           </div>
         </section>
 
-        <section className="workspace" aria-label="Grant workspace">
-          <aside className="grant-list">
-            <div className="section-head"><span>Milestones</span><span>{grants.length.toString().padStart(2, "0")}</span></div>
-            {grants.map((grant) => (
-              <button key={grant.id} className={`grant-row ${grant.id === selectedId ? "selected" : ""}`} onClick={() => setSelectedId(grant.id)}>
-                <span className={`status-dot status-${grant.status}`} />
-                <span><strong>{grant.title}</strong><small>{grant.illustrative ? "Illustrative preview" : `${grant.amount} USDC`}</small></span>
-                <ChevronRight size={16} aria-hidden="true" />
-              </button>
-            ))}
-            <div className="privacy-note"><EyeOff size={17} /><p>Recipient addresses never enter Morrow’s public grant record.</p></div>
-          </aside>
-
-          <div className="action-panel">
-            <div className="mode-tabs" role="tablist" aria-label="Grant action">
-              <button className={mode === "operator" ? "active" : ""} onClick={() => setMode("operator")} role="tab">Fund milestone</button>
-              <button className={mode === "claim" ? "active" : ""} onClick={() => setMode("claim")} role="tab">Claim or recover</button>
-            </div>
-
-            {notice ? <div className={`notice notice-${notice.tone}`} role="status"><CircleAlert size={17} />{notice.message}</div> : null}
-
-            {mode === "operator" ? (
-              <form className="grant-form" onSubmit={createGrant} noValidate>
-                <div className="form-title"><span>01</span><div><h2>Create a private milestone</h2><p>The title, deliverable, amount, and deadline are public. The recipient is not. The preflight above shows the funding-trail trade-off.</p></div></div>
-                <label>Grant title<input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Open-source privacy research" />{errors.title ? <small className="field-error">{errors.title}</small> : null}</label>
-                <label>Milestone deliverable<textarea value={draft.milestone} onChange={(e) => setDraft({ ...draft, milestone: e.target.value })} placeholder="Describe the verifiable outcome" rows={3} />{errors.milestone ? <small className="field-error">{errors.milestone}</small> : null}</label>
-                <div className="form-grid">
-                  <label>Amount<input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="850.00" /><span className="input-suffix">USDC</span>{errors.amount ? <small className="field-error">{errors.amount}</small> : null}</label>
-                  <label>Claim deadline<input type="datetime-local" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} />{errors.deadline ? <small className="field-error">{errors.deadline}</small> : null}</label>
-                </div>
-                <div className="submit-row"><ActionButton pending={pending}>{previewMode ? "Create preview" : "Simulate & fund privately"}</ActionButton><span>{previewMode ? "No transaction will be sent" : "Wallet simulates before submission"}</span></div>
-              </form>
-            ) : (
-              <div className="grant-form">
-                <div className="form-title"><span>02</span><div><h2>Release a private note</h2><p>A valid claim works before expiry. The recovery secret works only after expiry.</p></div></div>
-                <label>Milestone commitment<input value={claimCommitment} onChange={(e) => setClaimCommitment(e.target.value)} spellCheck={false} /></label>
-                <label>Secret<input type="password" value={claimSecret} onChange={(e) => setClaimSecret(e.target.value)} placeholder="0x…" autoComplete="off" spellCheck={false} /></label>
-                <div className="split-actions">
-                  <button className="button button-primary" onClick={() => void release("claim")} disabled={pending}><KeyRound size={16} />Claim milestone</button>
-                  <button className="button button-secondary" onClick={() => void release("recover")} disabled={pending}><RotateCcw size={16} />Recover expired funds</button>
-                </div>
-              </div>
-            )}
+        <section className="atomic-panel" aria-labelledby="atomic-title">
+          <div className="atomic-heading">
+            <ShieldCheck size={20} aria-hidden="true" />
+            <div><h2 id="atomic-title">Atomic milestone path</h2><p>Funding is designed to fail closed: the private withdrawal and helper lock settle together or not at all.</p></div>
+            <span className="atomic-badge">Preview-only</span>
           </div>
-
-          <aside className="detail-panel">
-            <div className="section-head"><span>Selected grant</span><span className={`state-label state-${selected.status}`}>{selected.status}</span></div>
-            <h3>{selected.title}</h3>
-            <p>{selected.milestone}</p>
-            <dl>
-              <div><dt>Milestone</dt><dd>{selected.amount} USDC</dd></div>
-              <div><dt>Deadline</dt><dd>{new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</dd></div>
-              <div><dt>Recipient</dt><dd><LockKeyhole size={14} />Private</dd></div>
-              <div><dt>Commitment</dt><dd className="mono">{truncate(selected.claimCommitment, 8, 6)}</dd></div>
-            </dl>
-            <div className="state-track">
-              <div className="done"><Check size={12} />Terms set</div><span />
-              <div className={selected.status !== "ready" ? "done" : ""}><Check size={12} />Funded</div><span />
-              <div className={["claimed", "recovered"].includes(selected.status) ? "done" : ""}><Check size={12} />Resolved</div>
-            </div>
-            {selected.transactionHash && config ? <a className="explorer-link" href={`${config.explorerBaseUrl}/tx/${selected.transactionHash}`} target="_blank" rel="noreferrer">View transaction <ArrowRight size={14} /></a> : null}
-          </aside>
+          <ol className="atomic-steps">
+            {atomicSteps.map((step, index) => (
+              <li key={step.title} className={`atomic-${step.status}`}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div><strong>{step.title}</strong><p>{step.detail}</p></div>
+                <small>{step.visibility}</small>
+              </li>
+            ))}
+          </ol>
+          <p className="atomic-disclaimer">No transaction is enabled by this panel. Funding needs a mature private USDC note and a reviewed, deployed Morrow helper; resolution remains unverified until the contract path is compiled and tested.</p>
         </section>
 
         <section className="shield-panel" aria-labelledby="shield-title">
@@ -346,8 +338,83 @@ function App() {
             <span>New notes mature after roughly 10 blocks. Shielding separately avoids publicly tying this deposit to a specific milestone.</span>
           </div>
         </section>
+        </section> : null}
 
-        {secrets ? (
+        {workflow === "fund" ? <section className="workspace" id="fund-panel" role="tabpanel" aria-labelledby="fund-tab" aria-label="Fund a milestone">
+          <aside className="grant-list">
+            <div className="section-head"><span>Milestones</span><span>{grants.length.toString().padStart(2, "0")}</span></div>
+            {grants.map((grant) => (
+              <button key={grant.id} className={`grant-row ${grant.id === selectedId ? "selected" : ""}`} onClick={() => setSelectedId(grant.id)}>
+                <span className={`status-dot status-${grant.status}`} />
+                <span><strong>{grant.title}</strong><small>{grant.illustrative ? "Illustrative preview" : `${grant.amount} USDC`}</small></span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            ))}
+            <div className="privacy-note"><EyeOff size={17} /><p>Recipient addresses never enter Morrow’s public grant record.</p></div>
+          </aside>
+
+          <div className="action-panel">
+              <form className="grant-form" onSubmit={createGrant} noValidate>
+                <div className="form-title"><span>01</span><div><h2>Create a private milestone</h2><p>The title, deliverable, amount, and deadline are public. The recipient is not. The preflight above shows the funding-trail trade-off.</p></div></div>
+                <label>Grant title<input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Open-source privacy research" />{errors.title ? <small className="field-error">{errors.title}</small> : null}</label>
+                <label>Milestone deliverable<textarea value={draft.milestone} onChange={(e) => setDraft({ ...draft, milestone: e.target.value })} placeholder="Describe the verifiable outcome" rows={3} />{errors.milestone ? <small className="field-error">{errors.milestone}</small> : null}</label>
+                <div className="form-grid">
+                  <label>Amount<input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="850.00" /><span className="input-suffix">USDC</span>{errors.amount ? <small className="field-error">{errors.amount}</small> : null}</label>
+                  <label>Claim deadline<input type="datetime-local" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} />{errors.deadline ? <small className="field-error">{errors.deadline}</small> : null}</label>
+                </div>
+                <div className="submit-row"><ActionButton pending={pending}>{previewMode ? "Create atomic preview" : "Simulate atomic funding"}</ActionButton><span>{previewMode ? "No transaction will be sent" : "Private withdrawal + helper lock; both must succeed"}</span></div>
+              </form>
+          </div>
+
+          <aside className="detail-panel">
+            <div className="section-head"><span>Selected grant</span><span className={`state-label state-${selected.status}`}>{selected.status}</span></div>
+            <h3>{selected.title}</h3>
+            <p>{selected.milestone}</p>
+            <dl>
+              <div><dt>Milestone</dt><dd>{selected.amount} USDC</dd></div>
+              <div><dt>Deadline</dt><dd>{new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</dd></div>
+              <div><dt>Recipient</dt><dd><LockKeyhole size={14} />Private</dd></div>
+              <div><dt>Commitment</dt><dd className="mono">{truncate(selected.claimCommitment, 8, 6)}</dd></div>
+            </dl>
+            <div className="state-track">
+              <div className="done"><Check size={12} />Terms set</div><span />
+              <div className={selected.status !== "ready" ? "done" : ""}><Check size={12} />Funded</div><span />
+              <div className={["claimed", "recovered"].includes(selected.status) ? "done" : ""}><Check size={12} />Resolved</div>
+            </div>
+            {selected.transactionHash && config ? <a className="explorer-link" href={`${config.explorerBaseUrl}/tx/${selected.transactionHash}`} target="_blank" rel="noreferrer">View transaction <ArrowRight size={14} /></a> : null}
+          </aside>
+        </section> : null}
+
+        {workflow === "resolve" ? <section className="workspace" id="resolve-panel" role="tabpanel" aria-labelledby="resolve-tab" aria-label="Resolve a milestone">
+          <aside className="grant-list">
+            <div className="section-head"><span>Milestones</span><span>{grants.length.toString().padStart(2, "0")}</span></div>
+            {grants.map((grant) => (
+              <button key={grant.id} className={`grant-row ${grant.id === selectedId ? "selected" : ""}`} onClick={() => { setSelectedId(grant.id); setClaimCommitment(grant.claimCommitment); }}>
+                <span className={`status-dot status-${grant.status}`} />
+                <span><strong>{grant.title}</strong><small>{grant.illustrative ? "Illustrative preview" : `${grant.amount} USDC`}</small></span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            ))}
+          </aside>
+          <div className="action-panel">
+            <div className="grant-form">
+              <div className="form-title"><span>03</span><div><h2>Release a private note</h2><p>A valid claim works before expiry. The recovery secret works only after expiry.</p></div></div>
+              <label>Milestone commitment<input value={claimCommitment} onChange={(e) => setClaimCommitment(e.target.value)} spellCheck={false} /></label>
+              <label>Secret<input type="password" value={claimSecret} onChange={(e) => setClaimSecret(e.target.value)} placeholder="0x…" autoComplete="off" spellCheck={false} /></label>
+              <div className="split-actions">
+                <button className="button button-primary" onClick={() => void release("claim")} disabled={pending}><KeyRound size={16} />Claim milestone</button>
+                <button className="button button-secondary" onClick={() => void release("recover")} disabled={pending}><RotateCcw size={16} />Recover expired funds</button>
+              </div>
+            </div>
+          </div>
+          <aside className="detail-panel">
+            <div className="section-head"><span>Selected grant</span><span className={`state-label state-${selected.status}`}>{selected.status}</span></div>
+            <h3>{selected.title}</h3><p>{selected.milestone}</p>
+            <dl><div><dt>Milestone</dt><dd>{selected.amount} USDC</dd></div><div><dt>Deadline</dt><dd>{new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Recipient</dt><dd><LockKeyhole size={14} />Private</dd></div><div><dt>Commitment</dt><dd className="mono">{truncate(selected.claimCommitment, 8, 6)}</dd></div></dl>
+          </aside>
+        </section> : null}
+
+        {workflow === "fund" && secrets ? (
           <section className="secret-sheet" aria-label="New milestone secrets">
             <div><KeyRound size={20} /><div><strong>Save these once</strong><span>They stay in memory only and disappear on refresh.</span></div></div>
             <label>Recipient claim secret<button onClick={() => copy(secrets.claimSecret)}><code>{truncate(secrets.claimSecret, 12, 8)}</code><Copy size={15} /></button></label>
@@ -355,14 +422,22 @@ function App() {
           </section>
         ) : null}
 
-        <section className="proof-section">
+        {workflow === "evidence" ? <section className="proof-section" id="evidence-panel" role="tabpanel" aria-labelledby="evidence-tab">
           <h2>One milestone. Three inspectable proofs.</h2>
+          <div className="evidence-status" aria-label="Current evidence status">
+            <article><span>Pool activity</span><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} verified`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : `${Math.max(0, 3 - poolEvidence.length)} more successful pool transaction${poolEvidence.length === 2 ? " is" : "s are"} required.`}</p></article>
+            <article><span>Helper contract</span><strong>Not deployed</strong><p>The project-owned helper remains uncompiled and unreviewed.</p></article>
+            <article><span>Public demo</span><strong>Not published</strong><p>No live demo or video is represented as complete.</p></article>
+          </div>
+          {poolEvidence && poolEvidence.length > 0 ? <div className="verified-transactions" aria-label="Verified pool transactions">
+            {poolEvidence.map((entry) => <a key={entry.hash} className="explorer-link" href={`${config?.explorerBaseUrl ?? "https://starkscan.co"}/tx/${entry.hash}`} target="_blank" rel="noreferrer">Verified shield · {entry.amount} USDC · block {entry.blockNumber} <ArrowRight size={14} /></a>)}
+          </div> : null}
           <div className="proof-grid">
             <article><span>01</span><LockKeyhole /><h3>Shielded funding</h3><p>The pool funds Morrow’s helper without exposing the operator behind the action.</p></article>
             <article><span>02</span><FileCheck2 /><h3>Claim commitment</h3><p>Only a secret preimage can release the milestone into the recipient’s private note.</p></article>
             <article><span>03</span><RotateCcw /><h3>Deterministic recovery</h3><p>After expiry, a separate recovery secret returns value privately to the operator.</p></article>
           </div>
-        </section>
+        </section> : null}
       </main>
 
       <footer><span>Morrow</span><p>Private milestone grants on Starknet.</p><a href="https://strk20-by-example.org/" target="_blank" rel="noreferrer">Built with STRK20 <ArrowRight size={13} /></a></footer>

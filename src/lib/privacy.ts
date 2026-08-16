@@ -10,6 +10,40 @@ export interface PrivacyPreflight {
   nextStep: string;
 }
 
+export interface AtomicMilestoneStep {
+  title: string;
+  detail: string;
+  visibility: string;
+  status: "separate" | "atomic" | "planned";
+}
+
+/**
+ * Public product explanation only. The helper contract has not yet been
+ * compiled, reviewed, deployed, or exercised on mainnet.
+ */
+export function atomicMilestoneSteps(): AtomicMilestoneStep[] {
+  return [
+    {
+      title: "Shield separately",
+      detail: "Public USDC enters STRK20 first and matures before it can fund a milestone.",
+      visibility: "Public depositor, amount, and timing",
+      status: "separate",
+    },
+    {
+      title: "Fund and lock together",
+      detail: "A private withdrawal and Morrow helper lock are submitted as one action batch: both succeed or both revert.",
+      visibility: "Helper activity and amount remain public; operator identity stays outside the helper call",
+      status: "atomic",
+    },
+    {
+      title: "Resolve into an open note",
+      detail: "Claim or expiry recovery is designed to settle directly into a note. This path needs contract verification before it can be used.",
+      visibility: "Open-note amount public; note owner hidden",
+      status: "planned",
+    },
+  ];
+}
+
 /**
  * A deliberately static explanation of known transaction structure. It does
  * not inspect the pool or infer an anonymity set, which would require a live,

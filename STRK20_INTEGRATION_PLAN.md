@@ -46,9 +46,9 @@ Do not attribute private activity from transaction `sender`: that is the relayer
 
 Freshness check on 2026-08-14 found: get-starknet `next` moved to `6.0.4`; `packages/sub_account_anonymizer` disappeared; `packages/shadow_account_anonymizer` appeared; Wallet API stable remains `0.10.3`. Neither package-path change is required for Morrow's route.
 
-## 5. Phase 1 — correct wallet connection and first shielded flow — automated checkpoint complete 2026-08-14; manual Ready gate pending
+## 5. Phase 1 — correct wallet connection and first shielded flow — connection gate complete 2026-08-15; shield gate pending
 
-Status: app changes and headless/browser checks complete; waiting for the developer's Ready-wallet verification before Phase 2.
+Status: Ready X connected on Starknet Mainnet without a balance-consent prompt. The first minimal mainnet shield remains required before Phase 2.
 
 1. Update `package.json` and `pnpm-lock.yaml` to the stable tested get-starknet `6.0.3` + types `0.10.3` combination.
 2. Replace global wallet scanning in `src/lib/strk20.ts` with get-starknet v6 discovery and a typed `WalletAccountV6` connection.
@@ -58,11 +58,11 @@ Status: app changes and headless/browser checks complete; waiting for the develo
 6. Keep shield and grant funding separate by default. Bundling them would publicly correlate depositor and amount with the funded milestone.
 7. Verify with Ready and the wallet test dapp before continuing.
 
-Manual gate: connect Ready, detect `0.10.3+` without a balance-consent prompt, reject an unsupported wallet cleanly, complete one non-production shield test, and confirm the UI names both approval and shield prompts.
+Manual gate remaining: complete one minimal mainnet shield and confirm both the ERC-20 approval and shield prompts plus note maturity. Unsupported-wallet degradation remains a later non-production check.
 
-## 6. Phase 2 — Morrow grant lifecycle in the app
+## 6. Phase 2 — Morrow grant lifecycle in the app — atomicity preview complete 2026-08-15; mainnet gate pending
 
-Status: pending Phase 1 manual confirmation.
+Status: the app now presents the separate-shield, atomic-fund, and planned-resolution sequence without sending a transaction. The mainnet funding and resolution manual gate remains pending the first mature shielded note, a reviewed/deployed helper, and contract verification.
 
 1. Keep action construction in `src/lib/strk20.ts`; validate fixed pool, token, helper, chain, operation, amount, expiry, and felt inputs before wallet submission.
 2. In `src/App.tsx:87`, require a mature shielded balance before building `withdraw → privacy_invoke(Deposit)`; simulate before submission and present the helper's public amount/activity boundary.
@@ -106,9 +106,10 @@ Status: outside skill execution; project-owned.
 ## 10. Open items to re-verify at build time
 
 - `get-starknet-discovery@6.0.3` resolves wallet-standard `6.0.4` through a caret dependency, while starknet.js `10.4.0` carries its own older wallet-standard type identity. Phase 1 contains that structurally compatible runtime seam in one explicit adapter cast in `src/lib/strk20.ts`; re-check before upgrading either side.
-- Manual Ready gate remains: capability detection without balance consent, Mainnet connection, unsupported-wallet degradation, and a minimal shield transaction.
+- Ready connection gate passed 2026-08-15 without balance consent. Remaining: unsupported-wallet degradation and a minimal mainnet shield transaction.
 - Ready version and Xverse dapp-facing Wallet API availability.
 - Current WalletAccount guide methods and capability-detection response shape.
+- Observation 2026-08-16: Ready returned `INVALID_REQUEST_PAYLOAD` both for Morrow's optional `strk20PrepareInvoke(..., true)` simulation and for the direct invoke. The initial simulation hypothesis was superseded: the Wallet API schema defines the deposit `amount` as a hexadecimal `FELT`, while Morrow had emitted a decimal base-unit string. The Phase 1 shield path now sends the documented `deposit` action through `strk20InvokeTransaction` with a `0x` hexadecimal felt amount. Re-check with a user-approved Ready shield before calling this live.
 - Current pool fee, note maturity behavior, and paymaster fee UX.
 - Current privacy monorepo tag and package paths.
 - Exact supported mainnet token address and decimals.

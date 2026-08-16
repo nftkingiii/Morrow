@@ -38,6 +38,23 @@ export interface FundInput {
 export type PrivateOperation = "claim" | "recover";
 
 const OPERATION = { deposit: "0", claim: "1", recover: "2" } as const;
+const WALLET_CONNECTION_TIMEOUT_MS = 30_000;
+
+export function raceWithTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+    operation.then(
+      (value) => {
+        globalThis.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        globalThis.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
 
 export function readMorrowConfig(): MorrowConfig | null {
   const escrowAddress = import.meta.env.VITE_MORROW_ESCROW_ADDRESS?.trim();
@@ -68,6 +85,23 @@ export function supportsWalletApi(versions: readonly string[], minimum = "0.10.3
   });
 }
 
+function compareWalletApiVersions(left: string, right: string): number {
+  const leftParts = left.replace(/^v/, "").split(".").map(Number);
+  const rightParts = right.replace(/^v/, "").split(".").map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+export function highestSupportedWalletApi(versions: readonly string[], minimum = "0.10.3"): string | null {
+  return versions
+    .filter((version) => supportsWalletApi([version], minimum))
+    .sort(compareWalletApiVersions)
+    .at(-1) ?? null;
+}
+
 function preferredWallet(wallets: ReturnType<typeof walletStore.getWallets>) {
   return wallets.find((wallet) => /ready/i.test(wallet.name)) ?? wallets[0];
 }
@@ -95,7 +129,11 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
     // Ready requires the dapp to be authorized before privileged Wallet API
     // capability queries. WalletAccountV6.connect performs standard:connect.
     const walletForStarknet = wallet as unknown as Parameters<typeof WalletAccountV6.connect>[1];
-    account = await WalletAccountV6.connect(provider, walletForStarknet);
+    account = await raceWithTimeout(
+      WalletAccountV6.connect(provider, walletForStarknet),
+      WALLET_CONNECTION_TIMEOUT_MS,
+      "Ready did not finish connecting. Reload Morrow, unlock Ready, and try once more.",
+    );
   } catch (error) {
     if (wasRejected(error)) throw new WalletConnectionError("rejected", "Wallet connection was rejected. No permissions or balance access were requested.");
     throw new WalletConnectionError("connection-error", error instanceof Error ? error.message : "Privacy wallet connection failed.");
@@ -107,7 +145,8 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
   } catch {
     throw new WalletConnectionError("unsupported-wallet", `${wallet.name} does not expose the STRK20 Privacy Wallet API. Use Ready for Phase 1.`);
   }
-  if (!supportsWalletApi(supportedVersions)) {
+  const walletApiVersion = highestSupportedWalletApi(supportedVersions);
+  if (!walletApiVersion) {
     throw new WalletConnectionError(
       "unsupported-wallet",
       `${wallet.name} supports Wallet API ${supportedVersions.join(", ") || "unknown"}; Morrow requires 0.10.3 or newer.`,
@@ -119,11 +158,23 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
     throw new WalletConnectionError("wrong-network", "Morrow Phase 1 requires Starknet Mainnet. Switch the wallet network and reconnect.");
   }
 
-  return { account, walletName: wallet.name, walletApiVersion: supportedVersions.at(-1) ?? "0.10.3" };
+  return { account, walletName: wallet.name, walletApiVersion };
 }
 
 export function shieldActions(tokenAddress: string, amount: string): STRK20_ACTION[] {
-  return [{ type: "deposit", token: tokenAddress, amount: toBaseUnits(amount) }];
+  // Wallet API FELT fields use hexadecimal strings. Decimal base units pass
+  // TypeScript's broad `string` type but are rejected by schema-validating
+  // wallets such as Ready.
+  const baseUnits = BigInt(toBaseUnits(amount));
+  return [{ type: "deposit", token: tokenAddress, amount: `0x${baseUnits.toString(16)}` }];
+}
+
+export function describeStrk20Error(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Shield request failed.";
+  if (message.includes("NOT_REGISTERED")) {
+    return "Your wallet has not completed its STRK20 setup. In Ready, use its Privacy flow to shield a small amount of USDC once and approve it; then return to Morrow and retry. Morrow never handles your viewing key, so the wallet performs this setup.";
+  }
+  return message;
 }
 
 export function fundActions(config: MorrowConfig, input: FundInput): STRK20_ACTION[] {

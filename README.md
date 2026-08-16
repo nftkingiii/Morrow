@@ -6,13 +6,16 @@ It is a variation inspired by the STRK20 Private Sprint's non-exclusive [IDEA-10
 
 ## What the app does today
 
-1. Lets an operator draft public milestone terms without recording a recipient address.
-2. Compares a bundled shield-and-fund path with a separate shield-then-fund path.
-3. Explains the known public signals and STRK20 private boundary for that choice.
-4. Connects a privacy-capable Starknet wallet without requesting shielded-balance consent merely to detect support.
-5. Offers a separate, two-prompt shield flow: ERC-20 approval followed by shield.
+The homepage is the product workspace, organized around four major tabs:
 
-The preflight is deliberately static. It does not claim to calculate a live anonymity set, trace an observer, or guarantee privacy. Those claims would require independently verified live pool/indexer evidence.
+1. **Prepare** — compare funding routes, inspect the atomicity boundary, and shield separately.
+2. **Fund** — draft public milestone terms without recording a recipient address.
+3. **Resolve** — claim or recover an existing milestone.
+4. **Evidence** — keep the current on-chain, contract, demo, and privacy-boundary proof status explicit.
+
+The wallet connection does not request shielded-balance consent merely to detect support. The preflight is deliberately static: it does not claim to calculate a live anonymity set, trace an observer, or guarantee privacy.
+
+Those claims would require independently verified live pool/indexer evidence.
 
 ## Privacy boundary
 
@@ -35,10 +38,12 @@ operator chooses a funding sequence
         v
 Morrow preflight: public signals + private boundary (static, local)
         |
-        | separate shield (recommended) -> maturity -> later grant action
+        | separate shield (recommended) -> maturity -> atomic fund-and-lock action
         v
 privacy-capable wallet -> STRK20 pool -> Morrow helper (future reviewed deployment)
 ```
+
+The atomic funding action is designed as `withdraw -> privacy_invoke(Deposit)` in one wallet-submitted action batch. It prevents a half-funded milestone, but it does not hide public helper activity or the amount. Morrow deliberately keeps the preceding shield separate so that the public deposit is not directly correlated with the milestone. Claim/recovery into an open note is a planned, unverified contract path; its amount would be public while note ownership remains hidden.
 
 The repository also contains a project-owned Cairo draft for milestone funding, claim, and expiry recovery. It is not deployed, audited, or part of a completed user flow. The STRK20 integration skill only changes app code; contract review, audit, deployment, and maintenance remain project-owned work.
 
