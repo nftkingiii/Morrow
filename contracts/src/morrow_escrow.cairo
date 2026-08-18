@@ -29,6 +29,8 @@ pub enum MorrowOperation {
 
 #[starknet::interface]
 pub trait IMorrowEscrow<T> {
+    fn get_accepted_token(self: @T) -> ContractAddress;
+
     fn get_milestone(self: @T, claim_commitment: felt252) -> MilestoneEntry;
 
     fn privacy_invoke(
@@ -56,6 +58,7 @@ pub mod errors {
     pub const CALLER_NOT_PRIVACY: felt252 = 'CALLER_NOT_PRIVACY';
     pub const ZERO_COMMITMENT: felt252 = 'ZERO_COMMITMENT';
     pub const ZERO_TOKEN: felt252 = 'ZERO_TOKEN';
+    pub const UNSUPPORTED_TOKEN: felt252 = 'UNSUPPORTED_TOKEN';
     pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
     pub const INVALID_EXPIRY: felt252 = 'INVALID_EXPIRY';
     pub const MILESTONE_EXISTS: felt252 = 'MILESTONE_EXISTS';
@@ -86,6 +89,7 @@ pub mod MorrowEscrow {
     #[storage]
     struct Storage {
         privacy_contract: ContractAddress,
+        accepted_token: ContractAddress,
         milestones: starknet::storage::Map<felt252, MilestoneEntry>,
     }
 
@@ -113,13 +117,21 @@ pub mod MorrowEscrow {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, privacy_contract: ContractAddress) {
+    fn constructor(
+        ref self: ContractState, privacy_contract: ContractAddress, accepted_token: ContractAddress,
+    ) {
         assert(privacy_contract.is_non_zero(), errors::ZERO_TOKEN);
+        assert(accepted_token.is_non_zero(), errors::ZERO_TOKEN);
         self.privacy_contract.write(privacy_contract);
+        self.accepted_token.write(accepted_token);
     }
 
     #[abi(embed_v0)]
     impl MorrowEscrowImpl of IMorrowEscrow<ContractState> {
+        fn get_accepted_token(self: @ContractState) -> ContractAddress {
+            self.accepted_token.read()
+        }
+
         fn get_milestone(self: @ContractState, claim_commitment: felt252) -> MilestoneEntry {
             self.milestones.read(claim_commitment)
         }
@@ -175,6 +187,7 @@ pub mod MorrowEscrow {
             assert(claim_commitment.is_non_zero(), errors::ZERO_COMMITMENT);
             assert(recovery_commitment.is_non_zero(), errors::ZERO_COMMITMENT);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(token == self.accepted_token.read(), errors::UNSUPPORTED_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(expires_at > get_block_info().unbox().block_timestamp, errors::INVALID_EXPIRY);
 

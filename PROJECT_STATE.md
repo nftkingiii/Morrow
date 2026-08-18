@@ -50,6 +50,8 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 
 ## Latest local verification
 
+- On 2026-08-18, Scarb 2.17.0 compiled `contracts/` successfully after MorrowEscrow gained a constructor-pinned accepted-token allowlist and read-back. Starknet Foundry 0.59.0 ran six passing tests from an isolated WSL-native copy of the same contract source: allowlist read-back, direct-caller rejection, unsupported-token rejection, active funding, pre-expiry claim, and post-expiry recovery. The helper remains undeployable until independent review and a deliberate mainnet deployment decision.
+
 - On 2026-08-15, Morrow was started with the configured `.env.local` at `http://127.0.0.1:5174/`; the app shell returned HTTP 200.
 - The prior Chrome tab was still on the older `:5173` server and its Ready authorization request remained pending after user confirmation. The configured tab was moved to `:5174` and reset to the ready-to-connect state.
 - `connectPrivacyWallet` now races wallet authorization against a 30-second timeout, so a non-settling wallet request returns a recovery message rather than permanently disabling the UI. The root cause inside Ready's unresolved Wallet Standard response remains external and unverified.

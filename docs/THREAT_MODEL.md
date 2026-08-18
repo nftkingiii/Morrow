@@ -20,7 +20,7 @@ Morrow controls real token movement. This document is a deployment blocker, not 
 | STRK20 pool → MorrowEscrow | direct unauthorized calls, calldata confusion | exact caller check, typed operation enum, fixed calldata order |
 | Secret → public commitment | collision across roles, weak randomness, accidental disclosure | CSPRNG, distinct claim/recovery tags, secrets kept in memory only |
 | Milestone state → release | double claim, early recovery, late claim | single active state, strict timestamp checks, terminal claimed/recovered states |
-| Helper → ERC-20 → pool | malicious/reentrant token, approval misuse | configured token allowlist is still required before deployment; pool-only caller and exact approval amount |
+| Helper → ERC-20 → pool | malicious/reentrant token, approval misuse | constructor-pinned accepted-token allowlist, pool-only caller, exact approval amount; independent review and rollback tests remain required |
 
 ## Abuse cases to test
 
@@ -36,8 +36,7 @@ Morrow controls real token movement. This document is a deployment blocker, not 
 
 ## Open blockers before mainnet funding
 
-- Add a constructor-level or storage-level allowlist for the single accepted token.
-- Run Cairo tests and obtain independent review of the unofficial helper extension.
+- Confirm the constructor's accepted token is the canonical mainnet USDC address during deployment, and obtain independent review of the unofficial helper extension. The current Foundry suite covers allowlisting, caller access, active funding, claim, and expiry recovery; extend it with replay and rollback cases before representing the helper as audited.
 - Verify deployed class, constructor pool address, and source.
 - Test Ready and Xverse explicitly; reject every unsupported wallet cleanly.
 - Confirm that preview mode cannot be mistaken for a transaction.

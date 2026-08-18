@@ -11,9 +11,13 @@ privacy = { git = "https://github.com/starkware-libs/starknet-privacy", tag = "P
 [dev-dependencies]
 snforge_std = "0.59.0"
 assert_macros = "2.17.0"
+starkware_utils_testing = { git = "https://github.com/starkware-libs/starkware-starknet-utils", rev = "0e12df09afe29f59a877a5b04801fedd8b31c50d" }
 
 [tool.scarb]
 allow-prebuilt-plugins = ["snforge_std"]
+
+[patch."https://scarbs.dev/"]
+snforge_std = "0.59.0"
 
 [[target.starknet-contract]]
 sierra = true
@@ -21,6 +25,9 @@ casm = true
 
 [[test]]
 name = "morrow_tests"
+build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
+]
 
 [scripts]
 test = "snforge test"
