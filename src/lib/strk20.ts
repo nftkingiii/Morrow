@@ -178,7 +178,10 @@ export function describeStrk20Error(error: unknown): string {
 }
 
 export function fundActions(config: MorrowConfig, input: FundInput): STRK20_ACTION[] {
-  const amount = toBaseUnits(input.amount);
+  // Ready validates STRK20 FELTs at the Wallet API boundary. Keep the
+  // withdrawal amount in the same canonical hexadecimal form as deposits,
+  // and reuse that exact felt in the helper invocation.
+  const amount = `0x${BigInt(toBaseUnits(input.amount)).toString(16)}`;
   const expiresAt = Math.floor(Date.parse(input.deadline) / 1000).toString();
   return [
     { type: "withdraw", token: config.tokenAddress, amount, recipient: config.escrowAddress },
