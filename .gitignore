@@ -9,3 +9,7 @@ coverage/
 *.key
 contracts/target/
 contracts/.snfoundry_cache/
+/deploy-morrow.html
+/src/deploy-morrow.tsx
+/scripts/declare-helper.mjs
+/morrow-logo-preview.png

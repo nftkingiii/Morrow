@@ -305,7 +305,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Morrow home">Morrow<span>.</span></a>
+        <a className="brand" href="#top" aria-label="Morrow home"><img src="/morrow-mark.svg" alt="" aria-hidden="true" /><span>Morrow<b>.</b></span></a>
         <div className={`network-pill wallet-${walletState}`}><span />{walletState === "ready" ? "Privacy ready · Mainnet" : "Starknet Mainnet"}</div>
         <button className="button button-wallet" onClick={connect} disabled={pending || Boolean(account)}>
           <Wallet size={16} aria-hidden="true" />
@@ -516,7 +516,7 @@ function App() {
         </section> : null}
       </main>
 
-      <footer><span>Morrow</span><p>Private milestone grants on Starknet.</p><a href="https://strk20-by-example.org/" target="_blank" rel="noreferrer">Built with STRK20 <ArrowRight size={13} /></a></footer>
+      <footer><span className="footer-brand"><img src="/morrow-mark.svg" alt="" aria-hidden="true" />Morrow</span><p>Private milestone grants on Starknet.</p><a href="https://strk20-by-example.org/" target="_blank" rel="noreferrer">Built with STRK20 <ArrowRight size={13} /></a></footer>
     </div>
   );
 }
