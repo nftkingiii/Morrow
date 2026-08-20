@@ -60,12 +60,12 @@ Status: Ready X connected on Starknet Mainnet without a balance-consent prompt. 
 
 Manual gate remaining: complete one minimal mainnet shield and confirm both the ERC-20 approval and shield prompts plus note maturity. Unsupported-wallet degradation remains a later non-production check.
 
-## 6. Phase 2 — Morrow grant lifecycle in the app — atomicity preview complete 2026-08-15; mainnet gate pending
+## 6. Phase 2 — Morrow grant lifecycle in the app — helper live; funding handoff pending 2026-08-20
 
-Status: the app now presents the separate-shield, atomic-fund, and planned-resolution sequence without sending a transaction. The mainnet funding and resolution manual gate remains pending the first mature shielded note, a reviewed/deployed helper, and contract verification.
+Status: MorrowEscrow is declared and deployed on Mainnet at `0x073d8af97693e5744fb46c994e1cfabf9815e3044cdca6253e239d922f9bae3`. The local app is configured with that address and submits funding directly through Ready, bypassing `strk20PrepareInvoke` because Ready previously rejected that optional preflight for STRK20 actions. A wallet-approved minimal funding transaction remains the manual gate; claim and recovery are still unverified on Mainnet.
 
 1. Keep action construction in `src/lib/strk20.ts`; validate fixed pool, token, helper, chain, operation, amount, expiry, and felt inputs before wallet submission.
-2. In `src/App.tsx:87`, require a mature shielded balance before building `withdraw → privacy_invoke(Deposit)`; simulate before submission and present the helper's public amount/activity boundary.
+2. In `src/App.tsx`, require the user to confirm they are using a mature shielded note before building `withdraw → privacy_invoke(Deposit)`. Submit the wallet action directly and present the helper's public amount/activity boundary; do not request a shielded-balance read solely to gate this action.
 3. Keep `src/lib/privacy.ts` and the preflight UI as a mandatory explanation before funding: the separate shield route is the default, and any bundled path must state its direct deposit-to-milestone correlation cost. Do not turn it into a live score without a verified data source and a separately approved scope.
 4. In `src/App.tsx:137`, use `open note → privacy_invoke(Claim|Recover)` and label that open-note amount as public while ownership stays hidden.
 5. Read the pool fee from `get_fee_amount`; never hardcode it. Show pool fee separately from sponsored gas and prevent impossible amounts.
@@ -75,9 +75,9 @@ Status: the app now presents the separate-shield, atomic-fund, and planned-resol
 
 Manual gate: fund one milestone through the configured helper, claim a separate active milestone, recover a separate expired milestone, and confirm all three results from wallet state and explorer/read-back evidence.
 
-## 7. Phase 3 — project-owned anonymizer review and deployment
+## 7. Phase 3 — project-owned anonymizer review and deployment — deployed 2026-08-20
 
-Status: outside skill execution; project-owned.
+Status: outside skill execution; project-owned. The class was declared as `0x695446733d19b87147bf2d8e46b8bcbbc8d300692d244db974903d961762cb6` and deployed on Mainnet. The deployment transaction is `0x527ea3b3f62bcbc3ee1106ecd32f37015143cc99c17b5b62f1a7259773ce77a`, `ACCEPTED_ON_L2`, and `SUCCEEDED`; public read-back confirms the accepted token is Circle USDC. Independent audit and source verification remain open.
 
 - Entry criterion: Phase 1 works with Ready and the exact Wallet API action/calldata contract has been confirmed against current docs.
 - Review `contracts/src/morrow_escrow.cairo` against the official anonymizer anatomy and shipped Ekubo/Vesu reference packages; the unofficial escrow page may inform the pattern but is not a shipped or audited dependency.
@@ -110,6 +110,10 @@ Status: outside skill execution; project-owned.
 - Ready version and Xverse dapp-facing Wallet API availability.
 - Current WalletAccount guide methods and capability-detection response shape.
 - Observation 2026-08-16: Ready returned `INVALID_REQUEST_PAYLOAD` both for Morrow's optional `strk20PrepareInvoke(..., true)` simulation and for the direct invoke. The initial simulation hypothesis was superseded: the Wallet API schema defines the deposit `amount` as a hexadecimal `FELT`, while Morrow had emitted a decimal base-unit string. The Phase 1 shield path now sends the documented `deposit` action through `strk20InvokeTransaction` with a `0x` hexadecimal felt amount. Re-check with a user-approved Ready shield before calling this live.
+- Observation 2026-08-20: the first helper-funding request returned `INVALID_REQUEST_PAYLOAD` before a wallet transaction was created. The action's `expires_at` and zero/enum helper calldata entries were decimal strings; Ready validates STRK20 request FELTs in canonical hexadecimal form. Morrow now emits all literal helper calldata as `0x` hex and covers this in `src/lib/strk20.test.ts`; a user-approved minimal retry remains required.
+- Funding audit 2026-08-20: hexadecimal normalization and explicit Wallet API 0.10.3 selection did not resolve the rejection. Ready reported 0.13 spendable shielded USDC after a 0.30 shield and a 0.17 fee; a 0.05 funding operation with a comparable fee needs about 0.22 shielded USDC. Treat insufficient post-fee private value as the current high-confidence diagnosis, not as confirmed until Ready exposes the funding quote or one adequately funded operation succeeds. See `FUNDING_AUDIT.md`.
+- Superseding audit 2026-08-20: funding still failed with 0.27 spendable shielded USDC, disproving the simple balance diagnosis. Morrow had bypassed starknet.js and added an undocumented `api_version` member to `wallet_strk20InvokeTransaction`; the installed 0.10.3 wrapper sends only `{ actions }`. Submission now uses the official wrapper, and shield timeouts reconcile against the account-indexed pool `Deposit` event for 30 seconds before reporting failure.
+- Root-cause audit 2026-08-20: the extra-`api_version` diagnosis above was incorrect because 0.10.3 permits it optionally. Ready X 5.33.8 validates literal invoke calldata with a canonical felt regex that rejects leading-zero values; Morrow's generated commitments (`0x02...`) and padded USDC address (`0x03...`) therefore failed before proving. All literal invoke calldata now passes through canonical felt normalization, with a leading-zero regression test.
 - Current pool fee, note maturity behavior, and paymaster fee UX.
 - Current privacy monorepo tag and package paths.
 - Exact supported mainnet token address and decimals.
