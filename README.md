@@ -65,6 +65,19 @@ pnpm check
 pnpm audit
 ```
 
+## Railway deployment
+
+`railway.json` builds the Vite bundle with `pnpm build`, starts the dependency-free static server with `pnpm start`, and checks `/` before marking a release healthy. Configure these variables in Railway without committing their values:
+
+- `VITE_STARKNET_RPC_URL`
+- `VITE_STRK20_POOL_ADDRESS`
+- `VITE_MORROW_ESCROW_ADDRESS`
+- `VITE_TOKEN_ADDRESS`
+- `VITE_STARKNET_NETWORK=mainnet`
+- `VITE_STARKSCAN_BASE_URL=https://starkscan.co`
+
+After deployment, compare the intended Git commit with Railway's deployed revision, open the app from a clean browser, exercise the public workflow, and verify every referenced hashed JavaScript and CSS asset returns successfully. Roll back by redeploying the previous known-good Railway deployment or reverting the release commit.
+
 The Cairo draft additionally requires compatible Scarb and Starknet Foundry tooling:
 
 ```bash

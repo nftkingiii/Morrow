@@ -70,6 +70,8 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 
 ## Next
 
+- Brand/deploy preparation, 2026-08-20: the user approved the Morrow horizon mark, now wired into the favicon, topbar, and footer. Railway build/start/health configuration and a dependency-free static server are prepared locally. Publishing and live deployment verification remain pending.
+
 1. Complete one minimal shield and confirm both ERC-20 approval and shield prompts plus note maturity.
 2. Atomic milestone preview is implemented. Do not represent claim/recovery atomicity as live until the project-owned helper is compiled, reviewed, deployed, and exercised.
 3. After shield confirmation and helper deployment, exercise the grant lifecycle app integration and its proof/read-back states.
