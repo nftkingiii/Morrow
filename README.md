@@ -2,6 +2,8 @@
 
 Morrow is a privacy preflight for STRK20 milestone payouts. Before an operator funds a grant, it makes the transaction structure legible: what is public, what remains inside STRK20, and whether the selected funding sequence makes the deposit trivially linkable to the milestone.
 
+**Live app:** https://morrow-production.up.railway.app
+
 It is a variation inspired by the STRK20 Private Sprint's non-exclusive [IDEA-10 (business payouts)](https://github.com/starkience/strk20-hackathon/blob/main/IDEAS.md#10-business-payouts-api), [IDEA-12 (marketplace escrow)](https://github.com/starkience/strk20-hackathon/blob/main/IDEAS.md#12-marketplace-escrow), and [IDEA-25 (transaction privacy simulator)](https://github.com/starkience/strk20-hackathon/blob/main/IDEAS.md#25-transaction-privacy-simulator). Morrow applies the simulator idea specifically to milestone grants; the ideas are not exclusive.
 
 ## What the app does today

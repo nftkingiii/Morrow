@@ -41,10 +41,11 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 - Product UI now uses four major workflows—Prepare, Fund, Resolve, and Evidence—rather than placing every action and explanation in one scrolling page.
 - MorrowEscrow was declared on Starknet Mainnet on 2026-08-20: class hash `0x695446733d19b87147bf2d8e46b8bcbbc8d300692d244db974903d961762cb6`; declaration transaction `0x66b75e3189818ea92714fc25d573e578d2141e64cb35f6d356a230aa8522688` is `ACCEPTED_ON_L2` and `SUCCEEDED`.
 - MorrowEscrow was deployed on Starknet Mainnet on 2026-08-20 at `0x073d8af97693e5744fb46c994e1cfabf9815e3044cdca6253e239d922f9bae3`; deployment transaction `0x527ea3b3f62bcbc3ee1106ecd32f37015143cc99c17b5b62f1a7259773ce77a` is `ACCEPTED_ON_L2` and `SUCCEEDED`. Mainnet read-back confirms the configured accepted token is canonical Circle USDC.
+- The public Railway app is live at `https://morrow-production.up.railway.app`. Deployment `65a024c8-a449-41b0-8e7e-eefa20046a37` runs GitHub `main` commit `b0a01bd206a21733465f11d8962bb12d084a423c` with Node 22.23.2 and pnpm 11.11.0.
 
 ## Unverified / blocked
 
-- The helper is deployed; source verification, independent review, claim/recovery read-back, and a live demo remain outstanding.
+- The helper is deployed; source verification, independent review, claim/recovery read-back, and a three-minute demo video remain outstanding.
 - `pnpm audit` reports one low-severity, development-only `esbuild` advisory on Windows (GHSA-g7r4-m6w7-qqqr); no high or critical advisory was reported. Reassess when a compatible Vite/esbuild update is available.
 
 ## Latest local verification
@@ -67,10 +68,11 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 - Mainnet funding transaction `0x02c68bd07c6cccb9f38588fb03fb9b6e203227c33e93b2000fe050b7854e75ea` succeeded in block 13,576,646 and locked 0.05 USDC, but Ready timed out and the old UI never surfaced the generated preimages. That milestone is active but not resolvable without those preimages. Funding is now a guarded two-step flow: generate/copy/confirm secrets before the wallet request, then reconcile timeout results from the commitment-indexed `MilestoneFunded` event.
 - Direct user report, 2026-08-20: Ready returned `INVALID_REQUEST_PAYLOAD` for the first live funding attempt before a transaction hash was created. Root cause: Morrow mixed decimal literals into helper calldata (`operation`, `expires_at`, and zero values), while Ready validates STRK20 request FELTs in canonical hexadecimal form. Funding and resolution calldata now normalize every literal to `0x` hexadecimal; a regression test covers the funding shape. The user must retry the minimal funding action.
 - Funding audit, 2026-08-20: the hexadecimal fix did not resolve Ready's rejection, so the earlier root-cause statement is superseded. The live pool fee is 6 STRK; Ready reported a 0.17 USDC-equivalent/private-token fee and only 0.13 spendable shielded USDC after shielding 0.30. Funding 0.05 with a comparable fee requires about 0.22 shielded USDC, making insufficient post-fee private value the current high-confidence diagnosis. `FUNDING_AUDIT.md` records the wallet, action-schema, deployed-class, constructor, token read-back, and remaining E2E evidence.
+- Railway deployment verification, 2026-08-20: the first build failed because legacy Nixpacks selected Node 18 for pnpm 11; the second failed closed on pnpm's unapproved esbuild postinstall. `railway.json` now uses Railpack, `package.json` pins Node 22, and `pnpm-workspace.yaml` permits only esbuild's build script. The successful deployment matches commit `b0a01bd`; `/`, the logo, and both hashed JS/CSS assets return HTTP 200, the compiled bundle contains the configured mainnet pool/helper/token/RPC settings, the four workflow tabs render, and startup logs show the static server listening on port 8080.
 
 ## Next
 
-- Brand/deploy preparation, 2026-08-20: the user approved the Morrow horizon mark, now wired into the favicon, topbar, and footer. Railway build/start/health configuration and a dependency-free static server are prepared locally. Publishing and live deployment verification remain pending.
+- The approved Morrow horizon mark and the production app are public. Keep `strk20.json.demo_url` empty unless the STRK20 hub fails to detect the GitHub-connected Railway deployment.
 
 1. Complete one minimal shield and confirm both ERC-20 approval and shield prompts plus note maturity.
 2. Atomic milestone preview is implemented. Do not represent claim/recovery atomicity as live until the project-owned helper is compiled, reviewed, deployed, and exercised.
