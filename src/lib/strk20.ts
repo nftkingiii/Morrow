@@ -37,8 +37,12 @@ export interface FundInput {
 
 export type PrivateOperation = "claim" | "recover";
 
-const OPERATION = { deposit: "0", claim: "1", recover: "2" } as const;
+const OPERATION = { deposit: "0x0", claim: "0x1", recover: "0x2" } as const;
 const WALLET_CONNECTION_TIMEOUT_MS = 30_000;
+
+export function canonicalFelt(value: string): string {
+  return `0x${BigInt(value).toString(16)}`;
+}
 
 export function raceWithTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -182,7 +186,7 @@ export function fundActions(config: MorrowConfig, input: FundInput): STRK20_ACTI
   // withdrawal amount in the same canonical hexadecimal form as deposits,
   // and reuse that exact felt in the helper invocation.
   const amount = `0x${BigInt(toBaseUnits(input.amount)).toString(16)}`;
-  const expiresAt = Math.floor(Date.parse(input.deadline) / 1000).toString();
+  const expiresAt = `0x${BigInt(Math.floor(Date.parse(input.deadline) / 1000)).toString(16)}`;
   return [
     { type: "withdraw", token: config.tokenAddress, amount, recipient: config.escrowAddress },
     {
@@ -190,13 +194,13 @@ export function fundActions(config: MorrowConfig, input: FundInput): STRK20_ACTI
       contract: config.escrowAddress,
       calldata: [
         OPERATION.deposit,
-        input.claimCommitment,
-        input.recoveryCommitment,
-        config.tokenAddress,
+        canonicalFelt(input.claimCommitment),
+        canonicalFelt(input.recoveryCommitment),
+        canonicalFelt(config.tokenAddress),
         amount,
         expiresAt,
-        "0",
-        "0",
+        "0x0",
+        "0x0",
       ],
     },
   ];
@@ -216,12 +220,12 @@ export function releaseActions(
       contract: config.escrowAddress,
       calldata: [
         operation === "claim" ? OPERATION.claim : OPERATION.recover,
-        claimCommitment,
-        "0",
-        "0",
-        "0",
-        "0",
-        secret,
+        canonicalFelt(claimCommitment),
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        canonicalFelt(secret),
         "${openNoteIds[0]}",
       ],
     },
@@ -233,5 +237,8 @@ export async function simulateActions(account: WalletAccountV6, actions: STRK20_
 }
 
 export async function submitActions(account: WalletAccountV6, actions: STRK20_ACTION[]) {
+  // Keep this boundary on starknet.js. Its v0.10.3 wrapper sends exactly
+  // `{ params: { actions } }`; adding an `api_version` member makes strict
+  // wallets reject the otherwise valid request as INVALID_REQUEST_PAYLOAD.
   return account.strk20InvokeTransaction(actions);
 }

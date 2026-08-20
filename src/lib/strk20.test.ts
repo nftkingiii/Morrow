@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { atomicMilestoneSteps, privacyPreflight } from "./privacy";
-import { describeStrk20Error, fundActions, highestSupportedWalletApi, raceWithTimeout, shieldActions, supportsWalletApi } from "./strk20";
+import { canonicalFelt, describeStrk20Error, fundActions, highestSupportedWalletApi, raceWithTimeout, shieldActions, submitActions, supportsWalletApi } from "./strk20";
+import type { WalletAccountV6 } from "starknet";
 
 describe("STRK20 wallet boundary", () => {
   it("accepts the stable minimum and newer Wallet API versions", () => {
@@ -35,8 +36,45 @@ describe("STRK20 wallet boundary", () => {
     expect(actions[1]).toMatchObject({
       type: "invoke",
       contract: "0x456",
-      calldata: expect.arrayContaining(["0", "0xabc", "0xdef", "0x123", "0xbebc20"]),
+      calldata: expect.arrayContaining(["0x0", "0xabc", "0xdef", "0x123", "0xbebc20", "0x6b359b00", "0x0", "0x0"]),
     });
+    expect((actions[1] as { calldata: string[] }).calldata.every((item) => item.startsWith("0x"))).toBe(true);
+  });
+
+  it("canonicalizes padded addresses and commitments in invoke calldata for Ready", () => {
+    expect(canonicalFelt("0x000abc")).toBe("0xabc");
+    const actions = fundActions(
+      {
+        escrowAddress: "0x0456",
+        tokenAddress: "0x0330",
+        explorerBaseUrl: "https://starkscan.co",
+      },
+      {
+        claimCommitment: "0x024a",
+        recoveryCommitment: "0x0539",
+        amount: "0.05",
+        deadline: "2026-12-31T00:00:00.000Z",
+      },
+    );
+    const invoke = actions[1];
+    expect(invoke.type).toBe("invoke");
+    if (invoke.type !== "invoke") throw new Error("Expected invoke action");
+    expect(invoke.calldata).toEqual(expect.arrayContaining(["0x24a", "0x539", "0x330"]));
+    expect(invoke.calldata.every((item) => /^0x(?:0|[a-f1-9][a-f0-9]{0,62})$/i.test(item))).toBe(true);
+  });
+
+  it("submits through the starknet.js wrapper without extra payload fields", async () => {
+    const submitted: unknown[] = [];
+    const account = {
+      strk20InvokeTransaction: async (actions: unknown) => {
+        submitted.push(actions);
+        return { transaction_hash: "0x123" };
+      },
+    } as unknown as WalletAccountV6;
+    const actions = shieldActions("0x123", "1");
+
+    await expect(submitActions(account, actions)).resolves.toEqual({ transaction_hash: "0x123" });
+    expect(submitted).toEqual([actions]);
   });
 
   it("turns a missing wallet registration into a safe recovery instruction", () => {

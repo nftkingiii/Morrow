@@ -20,14 +20,13 @@ import {
 import {
   createGrantSecrets,
   grantSchema,
-  illustrativeGrant,
   truncate,
   type GrantDraft,
   type GrantRecord,
   type GrantSecrets,
 } from "./lib/grants";
 import { atomicMilestoneSteps, privacyPreflight, type FundingRoute } from "./lib/privacy";
-import { type PoolEvidence, verifyPoolTransactions } from "./lib/evidence";
+import { latestBlockNumber, reconcileMilestoneFunding, reconcileShieldDeposit, type PoolEvidence, verifyPoolTransactions } from "./lib/evidence";
 import submission from "../strk20.json";
 import {
   connectPrivacyWallet,
@@ -45,6 +44,7 @@ import {
 type Workflow = "prepare" | "fund" | "resolve" | "evidence";
 type Notice = { tone: "success" | "warning" | "error"; message: string } | null;
 type WalletState = "disconnected" | "connecting" | "no-wallet" | "unsupported-wallet" | "wrong-network" | "rejected" | "ready" | "connection-error";
+type PreparedFunding = { draft: GrantDraft; generated: GrantSecrets & { claimCommitment: string; recoveryCommitment: string } };
 
 const blankDraft: GrantDraft = {
   title: "",
@@ -53,9 +53,9 @@ const blankDraft: GrantDraft = {
   deadline: "",
 };
 
-function ActionButton({ pending, children }: { pending: boolean; children: React.ReactNode }) {
+function ActionButton({ pending, disabled = false, children }: { pending: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button className="button button-primary" type="submit" disabled={pending}>
+    <button className="button button-primary" type="submit" disabled={pending || disabled}>
       {pending ? <span className="spinner" aria-hidden="true" /> : null}
       {children}
       {!pending ? <ArrowRight size={16} aria-hidden="true" /> : null}
@@ -68,10 +68,12 @@ function App() {
   const shieldToken = useMemo(readShieldToken, []);
   const [workflow, setWorkflow] = useState<Workflow>("prepare");
   const [draft, setDraft] = useState<GrantDraft>(blankDraft);
-  const [grants, setGrants] = useState<GrantRecord[]>([illustrativeGrant]);
-  const [selectedId, setSelectedId] = useState(illustrativeGrant.id);
+  const [grants, setGrants] = useState<GrantRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<GrantSecrets | null>(null);
-  const [claimCommitment, setClaimCommitment] = useState(illustrativeGrant.claimCommitment);
+  const [preparedFunding, setPreparedFunding] = useState<PreparedFunding | null>(null);
+  const [secretsBackedUp, setSecretsBackedUp] = useState(false);
+  const [claimCommitment, setClaimCommitment] = useState("");
   const [claimSecret, setClaimSecret] = useState("");
   const [account, setAccount] = useState<WalletAccountV6 | null>(null);
   const [walletState, setWalletState] = useState<WalletState>("disconnected");
@@ -86,9 +88,13 @@ function App() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [poolEvidence, setPoolEvidence] = useState<PoolEvidence[] | null>(null);
 
-  const selected = grants.find((grant) => grant.id === selectedId) ?? grants[0];
+  const selected = grants.find((grant) => grant.id === selectedId);
   const previewMode = !config || !account;
-  const preflight = privacyPreflight(fundingRoute, draft.amount || selected.amount);
+  const preflight = privacyPreflight(fundingRoute, draft.amount || selected?.amount || "");
+  const draftDeadline = draft.deadline ? new Date(draft.deadline) : null;
+  const draftDeadlineLabel = draftDeadline && !Number.isNaN(draftDeadline.getTime())
+    ? draftDeadline.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "Not set";
   const atomicSteps = atomicMilestoneSteps();
 
   useEffect(() => {
@@ -136,19 +142,40 @@ function App() {
       setNotice({ tone: "error", message: "Enter a positive token amount with at most six decimals." });
       return;
     }
+    const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
+    let startingBlock: number | null = null;
+    let submittedAmount: string | null = null;
     try {
       // React state does not disable a second click synchronously. This ref is
       // set before the first await so only one wallet request can be created.
       shieldRequestInFlight.current = true;
       setShieldPending(true);
       const actions = shieldActions(shieldToken, shieldAmount);
+      const [depositAction] = actions;
+      if (depositAction.type !== "deposit") throw new Error("Morrow built an invalid shield request.");
+      submittedAmount = depositAction.amount;
+      if (rpcUrl) startingBlock = await latestBlockNumber(rpcUrl);
       // Submit the documented action directly; the wallet handles proof creation
       // and shows an explicit transaction approval.
       const result = await submitActions(account, actions);
       setShieldAmount("");
       setNotice({ tone: "success", message: `Shield submitted: ${truncate(result.transaction_hash, 10, 8)}. Wait about 10 blocks before using the new note.` });
     } catch (error) {
-      setNotice({ tone: "error", message: describeStrk20Error(error) });
+      if (rpcUrl && startingBlock !== null && submittedAmount) {
+        setNotice({ tone: "warning", message: "Ready did not return a receipt. Checking the STRK20 pool for your confirmed shield…" });
+        try {
+          const recovered = await reconcileShieldDeposit(rpcUrl, account.address, shieldToken, submittedAmount, startingBlock);
+          if (recovered) {
+            setShieldAmount("");
+            setPoolEvidence((current) => current?.some((entry) => entry.hash === recovered.hash) ? current : [...(current ?? []), recovered]);
+            setNotice({ tone: "success", message: `Shield confirmed onchain: ${truncate(recovered.hash, 10, 8)} at block ${recovered.blockNumber}. Wait about 10 blocks before using the note.` });
+            return;
+          }
+        } catch {
+          // Preserve the wallet's original error if RPC reconciliation fails.
+        }
+      }
+      setNotice({ tone: "error", message: `${describeStrk20Error(error)} No matching onchain deposit was found during the 30-second reconciliation window; check Ready activity before retrying.` });
     } finally {
       shieldRequestInFlight.current = false;
       setShieldPending(false);
@@ -167,18 +194,42 @@ function App() {
     }
 
     setErrors({});
-    setPending(true);
-    try {
+    if (!preparedFunding) {
       const generated = createGrantSecrets();
+      setPreparedFunding({ draft: parsed.data, generated });
+      setSecrets(generated);
+      setSecretsBackedUp(false);
+      setNotice({ tone: "warning", message: "Funding has not started. Copy both secrets below, store them safely, then confirm the backup before opening Ready." });
+      return;
+    }
+    if (!secretsBackedUp) {
+      setNotice({ tone: "error", message: "Confirm that both secrets are backed up before funding. Morrow cannot recover them from the blockchain." });
+      return;
+    }
+
+    setPending(true);
+    const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
+    let startingBlock: number | null = null;
+    try {
+      const { draft: preparedDraft, generated } = preparedFunding;
       let transactionHash: string | undefined;
       if (config && account) {
-        const actions = fundActions(config, { ...parsed.data, ...generated });
-        await simulateActions(account, actions);
-        transactionHash = (await submitActions(account, actions)).transaction_hash;
+        const actions = fundActions(config, { ...preparedDraft, ...generated });
+        if (rpcUrl) startingBlock = await latestBlockNumber(rpcUrl);
+        try {
+          transactionHash = (await submitActions(account, actions)).transaction_hash;
+        } catch (error) {
+          if (rpcUrl && startingBlock !== null) {
+            setNotice({ tone: "warning", message: "Ready did not return a result. Checking MorrowEscrow for the prepared commitment…" });
+            const recovered = await reconcileMilestoneFunding(rpcUrl, config.escrowAddress, generated.claimCommitment, startingBlock);
+            if (recovered) transactionHash = recovered.hash;
+          }
+          if (!transactionHash) throw error;
+        }
       }
 
       const grant: GrantRecord = {
-        ...parsed.data,
+        ...preparedDraft,
         id: crypto.randomUUID(),
         claimCommitment: generated.claimCommitment,
         recoveryCommitment: generated.recoveryCommitment,
@@ -193,6 +244,8 @@ function App() {
       setClaimCommitment(grant.claimCommitment);
       setWorkflow("fund");
       setDraft(blankDraft);
+      setPreparedFunding(null);
+      setSecretsBackedUp(false);
       setNotice({
         tone: transactionHash ? "success" : "warning",
         message: transactionHash
@@ -240,6 +293,13 @@ function App() {
   function copy(value: string) {
     void navigator.clipboard.writeText(value);
     setNotice({ tone: "success", message: "Copied. Keep milestone secrets outside shared documents and screenshots." });
+  }
+
+  function discardPreparedFunding() {
+    setPreparedFunding(null);
+    setSecrets(null);
+    setSecretsBackedUp(false);
+    setNotice({ tone: "warning", message: "Prepared secrets discarded. No wallet request was sent." });
   }
 
   return (
@@ -306,7 +366,7 @@ function App() {
           <div className="atomic-heading">
             <ShieldCheck size={20} aria-hidden="true" />
             <div><h2 id="atomic-title">Atomic milestone path</h2><p>Funding is designed to fail closed: the private withdrawal and helper lock settle together or not at all.</p></div>
-            <span className="atomic-badge">Preview-only</span>
+            <span className="atomic-badge">{config ? "Live helper" : "Configuration needed"}</span>
           </div>
           <ol className="atomic-steps">
             {atomicSteps.map((step, index) => (
@@ -317,7 +377,7 @@ function App() {
               </li>
             ))}
           </ol>
-          <p className="atomic-disclaimer">No transaction is enabled by this panel. Funding needs a mature private USDC note and a reviewed, deployed Morrow helper; resolution remains unverified until the contract path is compiled and tested.</p>
+          <p className="atomic-disclaimer">Funding requires a mature shielded USDC note and a privacy-ready wallet. The helper is live; claim and recovery remain unverified on mainnet.</p>
         </section>
 
         <section className="shield-panel" aria-labelledby="shield-title">
@@ -350,38 +410,40 @@ function App() {
                 <ChevronRight size={16} aria-hidden="true" />
               </button>
             ))}
+            {grants.length === 0 ? <div className="grant-empty"><strong>No funded milestones yet</strong><span>Your first successful milestone will appear here.</span></div> : null}
             <div className="privacy-note"><EyeOff size={17} /><p>Recipient addresses never enter Morrow’s public grant record.</p></div>
           </aside>
 
           <div className="action-panel">
               <form className="grant-form" onSubmit={createGrant} noValidate>
                 <div className="form-title"><span>01</span><div><h2>Create a private milestone</h2><p>The title, deliverable, amount, and deadline are public. The recipient is not. The preflight above shows the funding-trail trade-off.</p></div></div>
-                <label>Grant title<input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Open-source privacy research" />{errors.title ? <small className="field-error">{errors.title}</small> : null}</label>
-                <label>Milestone deliverable<textarea value={draft.milestone} onChange={(e) => setDraft({ ...draft, milestone: e.target.value })} placeholder="Describe the verifiable outcome" rows={3} />{errors.milestone ? <small className="field-error">{errors.milestone}</small> : null}</label>
+                <label>Grant title<input disabled={Boolean(preparedFunding)} value={draft.title} onChange={(e) => { setDraft({ ...draft, title: e.target.value }); setSelectedId(null); }} placeholder="Open-source privacy research" />{errors.title ? <small className="field-error">{errors.title}</small> : null}</label>
+                <label>Milestone deliverable<textarea disabled={Boolean(preparedFunding)} value={draft.milestone} onChange={(e) => { setDraft({ ...draft, milestone: e.target.value }); setSelectedId(null); }} placeholder="Describe the verifiable outcome" rows={3} />{errors.milestone ? <small className="field-error">{errors.milestone}</small> : null}</label>
                 <div className="form-grid">
-                  <label>Amount<input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="850.00" /><span className="input-suffix">USDC</span>{errors.amount ? <small className="field-error">{errors.amount}</small> : null}</label>
-                  <label>Claim deadline<input type="datetime-local" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} />{errors.deadline ? <small className="field-error">{errors.deadline}</small> : null}</label>
+                  <label>Amount<input disabled={Boolean(preparedFunding)} inputMode="decimal" value={draft.amount} onChange={(e) => { setDraft({ ...draft, amount: e.target.value }); setSelectedId(null); }} placeholder="850.00" /><span className="input-suffix">USDC</span>{errors.amount ? <small className="field-error">{errors.amount}</small> : null}</label>
+                  <label>Claim deadline<input disabled={Boolean(preparedFunding)} type="datetime-local" value={draft.deadline} onChange={(e) => { setDraft({ ...draft, deadline: e.target.value }); setSelectedId(null); }} />{errors.deadline ? <small className="field-error">{errors.deadline}</small> : null}</label>
                 </div>
-                <div className="submit-row"><ActionButton pending={pending}>{previewMode ? "Create atomic preview" : "Simulate atomic funding"}</ActionButton><span>{previewMode ? "No transaction will be sent" : "Private withdrawal + helper lock; both must succeed"}</span></div>
+                {preparedFunding ? <label className="backup-check"><input type="checkbox" checked={secretsBackedUp} onChange={(event) => setSecretsBackedUp(event.target.checked)} />I saved both secrets outside this browser</label> : null}
+                <div className="submit-row"><ActionButton pending={pending} disabled={Boolean(preparedFunding) && !secretsBackedUp}>{preparedFunding ? (previewMode ? "Create prepared preview" : "Open Ready and fund") : "Generate funding secrets"}</ActionButton><span>{preparedFunding ? (secretsBackedUp ? "Private withdrawal + helper lock; both must succeed" : "Save both secrets and tick the acknowledgement to continue") : "No wallet request is sent in this step"}</span></div>
               </form>
           </div>
 
           <aside className="detail-panel">
-            <div className="section-head"><span>Selected grant</span><span className={`state-label state-${selected.status}`}>{selected.status}</span></div>
-            <h3>{selected.title}</h3>
-            <p>{selected.milestone}</p>
+            <div className="section-head"><span>{selected ? "Selected milestone" : "New milestone preview"}</span><span className={`state-label state-${selected?.status ?? "draft"}`}>{selected?.status ?? "draft"}</span></div>
+            <h3>{selected?.title || draft.title || "Untitled milestone"}</h3>
+            <p>{selected?.milestone || draft.milestone || "Your verifiable deliverable will appear here as you type."}</p>
             <dl>
-              <div><dt>Milestone</dt><dd>{selected.amount} USDC</dd></div>
-              <div><dt>Deadline</dt><dd>{new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</dd></div>
+              <div><dt>Milestone</dt><dd>{selected?.amount || draft.amount || "—"} USDC</dd></div>
+              <div><dt>Deadline</dt><dd>{selected ? new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : draftDeadlineLabel}</dd></div>
               <div><dt>Recipient</dt><dd><LockKeyhole size={14} />Private</dd></div>
-              <div><dt>Commitment</dt><dd className="mono">{truncate(selected.claimCommitment, 8, 6)}</dd></div>
+              <div><dt>Commitment</dt><dd className="mono">{selected ? truncate(selected.claimCommitment, 8, 6) : "Generated when funded"}</dd></div>
             </dl>
             <div className="state-track">
-              <div className="done"><Check size={12} />Terms set</div><span />
-              <div className={selected.status !== "ready" ? "done" : ""}><Check size={12} />Funded</div><span />
-              <div className={["claimed", "recovered"].includes(selected.status) ? "done" : ""}><Check size={12} />Resolved</div>
+              <div className={selected || Object.values(draft).every(Boolean) ? "done" : ""}><Check size={12} />Terms set</div><span />
+              <div className={selected ? "done" : ""}><Check size={12} />Funded</div><span />
+              <div className={selected && ["claimed", "recovered"].includes(selected.status) ? "done" : ""}><Check size={12} />Resolved</div>
             </div>
-            {selected.transactionHash && config ? <a className="explorer-link" href={`${config.explorerBaseUrl}/tx/${selected.transactionHash}`} target="_blank" rel="noreferrer">View transaction <ArrowRight size={14} /></a> : null}
+            {selected?.transactionHash && config ? <a className="explorer-link" href={`${config.explorerBaseUrl}/tx/${selected.transactionHash}`} target="_blank" rel="noreferrer">View transaction <ArrowRight size={14} /></a> : null}
           </aside>
         </section> : null}
 
@@ -395,6 +457,7 @@ function App() {
                 <ChevronRight size={16} aria-hidden="true" />
               </button>
             ))}
+            {grants.length === 0 ? <div className="grant-empty"><strong>No milestone to resolve</strong><span>Fund a milestone first, then return here to claim or recover it.</span></div> : null}
           </aside>
           <div className="action-panel">
             <div className="grant-form">
@@ -408,34 +471,47 @@ function App() {
             </div>
           </div>
           <aside className="detail-panel">
-            <div className="section-head"><span>Selected grant</span><span className={`state-label state-${selected.status}`}>{selected.status}</span></div>
+            {selected ? <><div className="section-head"><span>Selected milestone</span><span className={`state-label state-${selected.status}`}>{selected.status}</span></div>
             <h3>{selected.title}</h3><p>{selected.milestone}</p>
-            <dl><div><dt>Milestone</dt><dd>{selected.amount} USDC</dd></div><div><dt>Deadline</dt><dd>{new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Recipient</dt><dd><LockKeyhole size={14} />Private</dd></div><div><dt>Commitment</dt><dd className="mono">{truncate(selected.claimCommitment, 8, 6)}</dd></div></dl>
+            <dl><div><dt>Milestone</dt><dd>{selected.amount} USDC</dd></div><div><dt>Deadline</dt><dd>{new Date(selected.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</dd></div><div><dt>Recipient</dt><dd><LockKeyhole size={14} />Private</dd></div><div><dt>Commitment</dt><dd className="mono">{truncate(selected.claimCommitment, 8, 6)}</dd></div></dl></> : <div className="detail-empty"><LockKeyhole size={20} /><h3>Nothing to resolve yet</h3><p>A successfully funded milestone will provide the public commitment used here.</p></div>}
           </aside>
         </section> : null}
 
         {workflow === "fund" && secrets ? (
           <section className="secret-sheet" aria-label="New milestone secrets">
-            <div><KeyRound size={20} /><div><strong>Save these once</strong><span>They stay in memory only and disappear on refresh.</span></div></div>
-            <label>Recipient claim secret<button onClick={() => copy(secrets.claimSecret)}><code>{truncate(secrets.claimSecret, 12, 8)}</code><Copy size={15} /></button></label>
-            <label>Operator recovery secret<button onClick={() => copy(secrets.recoverySecret)}><code>{truncate(secrets.recoverySecret, 12, 8)}</code><Copy size={15} /></button></label>
+            <div className="secret-sheet-intro"><KeyRound size={20} /><div><strong>Save these once</strong><span>They control the funds, stay in memory only, and disappear on refresh.</span></div></div>
+            <label>Recipient claim secret<button type="button" aria-label="Copy recipient claim secret" onClick={() => copy(secrets.claimSecret)}><code>{truncate(secrets.claimSecret, 12, 8)}</code><Copy size={15} /></button></label>
+            <label>Operator recovery secret<button type="button" aria-label="Copy operator recovery secret" onClick={() => copy(secrets.recoverySecret)}><code>{truncate(secrets.recoverySecret, 12, 8)}</code><Copy size={15} /></button></label>
+            {preparedFunding ? <div className="secret-sheet-action"><span>Need a fresh pair?</span><button type="button" onClick={discardPreparedFunding}>Discard &amp; regenerate</button></div> : null}
           </section>
         ) : null}
 
         {workflow === "evidence" ? <section className="proof-section" id="evidence-panel" role="tabpanel" aria-labelledby="evidence-tab">
-          <h2>One milestone. Three inspectable proofs.</h2>
+          <header className="proof-heading">
+            <div><span>Evidence ledger</span><h2>Every public proof, in one place.</h2></div>
+            <p>Verified Mainnet receipts are separated from lifecycle steps that still need proof.</p>
+          </header>
           <div className="evidence-status" aria-label="Current evidence status">
-            <article><span>Pool activity</span><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} verified`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : `${Math.max(0, 3 - poolEvidence.length)} more successful pool transaction${poolEvidence.length === 2 ? " is" : "s are"} required.`}</p></article>
-            <article><span>Helper contract</span><strong>Not deployed</strong><p>The project-owned helper remains uncompiled and unreviewed.</p></article>
-            <article><span>Public demo</span><strong>Not published</strong><p>No live demo or video is represented as complete.</p></article>
+            <article><div><span>Pool activity</span><em className="evidence-state verified">Verified</em></div><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} receipts`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : "Two shield deposits and one milestone funding receipt are registered."}</p></article>
+            <article><div><span>Helper contract</span><em className="evidence-state live">Live</em></div><strong>Deployed</strong><p>Funding is proven on Mainnet. Claim and recovery still need their first receipts.</p></article>
+            <article><div><span>Public demo</span><em className="evidence-state pending">Pending</em></div><strong>Not published</strong><p>The live URL and three-minute demo remain intentionally unclaimed.</p></article>
           </div>
-          {poolEvidence && poolEvidence.length > 0 ? <div className="verified-transactions" aria-label="Verified pool transactions">
-            {poolEvidence.map((entry) => <a key={entry.hash} className="explorer-link" href={`${config?.explorerBaseUrl ?? "https://starkscan.co"}/tx/${entry.hash}`} target="_blank" rel="noreferrer">Verified shield · {entry.amount} USDC · block {entry.blockNumber} <ArrowRight size={14} /></a>)}
-          </div> : null}
+          <section className="proof-ledger" aria-labelledby="proof-ledger-title">
+            <div className="proof-ledger-title"><div><span>Onchain receipts</span><h3 id="proof-ledger-title">Mainnet activity</h3></div><strong>{poolEvidence?.length ?? 0} / 3 verified</strong></div>
+            <div className="proof-ledger-columns" aria-hidden="true"><span>Proof</span><span>Amount</span><span>Block</span><span>Transaction</span><span>Status</span></div>
+            {poolEvidence === null ? <div className="proof-ledger-empty">Checking Starknet receipts…</div> : poolEvidence.length === 0 ? <div className="proof-ledger-empty">No registered receipt could be verified.</div> : poolEvidence.map((entry, index) => (
+              <a key={entry.hash} className="proof-ledger-row" href={`${config?.explorerBaseUrl ?? "https://starkscan.co"}/tx/${entry.hash}`} target="_blank" rel="noreferrer">
+                <span className="proof-kind"><i>{String(index + 1).padStart(2, "0")}</i><b>{entry.kind === "shield" ? "Shield deposit" : "Milestone funding"}</b></span>
+                <span data-label="Amount">{entry.amount} USDC</span><span data-label="Block">#{entry.blockNumber.toLocaleString()}</span>
+                <span className="mono" data-label="Transaction">{truncate(entry.hash, 10, 8)} <ArrowRight size={13} /></span><em className="evidence-state verified">Verified</em>
+              </a>
+            ))}
+          </section>
+          <div className="proof-subhead"><span>Lifecycle coverage</span><p>What the current evidence proves—and what remains to be exercised.</p></div>
           <div className="proof-grid">
-            <article><span>01</span><LockKeyhole /><h3>Shielded funding</h3><p>The pool funds Morrow’s helper without exposing the operator behind the action.</p></article>
-            <article><span>02</span><FileCheck2 /><h3>Claim commitment</h3><p>Only a secret preimage can release the milestone into the recipient’s private note.</p></article>
-            <article><span>03</span><RotateCcw /><h3>Deterministic recovery</h3><p>After expiry, a separate recovery secret returns value privately to the operator.</p></article>
+            <article><span>01 · Verified</span><LockKeyhole /><h3>Shielded balance</h3><p>Two successful deposits establish usable private USDC in the STRK20 pool.</p></article>
+            <article><span>02 · Verified</span><FileCheck2 /><h3>Milestone funding</h3><p>The helper locked 0.05 USDC against a public claim commitment on Mainnet.</p></article>
+            <article className="proof-pending"><span>03 · Pending</span><RotateCcw /><h3>Claim or recovery</h3><p>The release paths are implemented, but neither has a first Mainnet receipt yet.</p></article>
           </div>
         </section> : null}
       </main>

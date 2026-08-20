@@ -1,6 +1,6 @@
 # Morrow project state
 
-Updated: 2026-08-16
+Updated: 2026-08-20
 
 ## Goal
 
@@ -39,13 +39,12 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 - STRK20 registration applied upstream as commit `b5fe114` from https://github.com/starkience/strk20-hackathon/pull/18.
 - Atomicity-preview UI: separate shield, atomic `withdraw -> privacy_invoke(Deposit)` funding intent, and planned open-note resolution, with no transaction enabled by that panel.
 - Product UI now uses four major workflows—Prepare, Fund, Resolve, and Evidence—rather than placing every action and explanation in one scrolling page.
+- MorrowEscrow was declared on Starknet Mainnet on 2026-08-20: class hash `0x695446733d19b87147bf2d8e46b8bcbbc8d300692d244db974903d961762cb6`; declaration transaction `0x66b75e3189818ea92714fc25d573e578d2141e64cb35f6d356a230aa8522688` is `ACCEPTED_ON_L2` and `SUCCEEDED`.
+- MorrowEscrow was deployed on Starknet Mainnet on 2026-08-20 at `0x073d8af97693e5744fb46c994e1cfabf9815e3044cdca6253e239d922f9bae3`; deployment transaction `0x527ea3b3f62bcbc3ee1106ecd32f37015143cc99c17b5b62f1a7259773ce77a` is `ACCEPTED_ON_L2` and `SUCCEEDED`. Mainnet read-back confirms the configured accepted token is canonical Circle USDC.
 
 ## Unverified / blocked
 
-- Scarb and Starknet Foundry are not installed locally; Cairo compilation and contract tests have not run.
-- Ready X connection on Starknet Mainnet was manually exercised without a balance-consent prompt; a minimal shield transaction is still unverified.
-- STRK20 pool, token, and MorrowEscrow mainnet addresses are not configured.
-- No contract deployment, verified source, mainnet transaction, or live demo exists yet.
+- The helper is deployed; source verification, independent review, claim/recovery read-back, and a live demo remain outstanding.
 - `pnpm audit` reports one low-severity, development-only `esbuild` advisory on Windows (GHSA-g7r4-m6w7-qqqr); no high or critical advisory was reported. Reassess when a compatible Vite/esbuild update is available.
 
 ## Latest local verification
@@ -62,11 +61,17 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 - User-verified mainnet Phase 1 shield, 2026-08-16: `0x074d1aa39677b6ac343631c828fb6cd0c7455aca04776cef27340c7b78635771` is `ACCEPTED_ON_L2` and `SUCCEEDED` in block `13377486`. Its public USDC leg deposits `100000` base units (`0.100000` native USDC) into the configured canonical STRK20 pool. `strk20.json` records this as the first required pool transaction.
 - Duplicate shield verified, 2026-08-16: `0x01426072154959aa0a3fb988c7757ccb19dc4c7e4b3794208e92c547167fd852` is also `ACCEPTED_ON_L2` and `SUCCEEDED` in block `13377523`, with another `0.100000` native USDC pool deposit. The UI now uses a synchronous ref guard before its first await to prevent rapid double-clicks from issuing more than one wallet request; the second hash is recorded in `strk20.json`.
 - Phase 2 evidence slice, 2026-08-16: the Evidence tab now fetches the public receipts listed in `strk20.json` from the configured RPC, validates successful canonical-pool USDC deposit events, and links only verified receipt evidence. It accepts both `ACCEPTED_ON_L2` and receipts that later advance to `ACCEPTED_ON_L1`; it does not query shielded balances, notes, or viewing keys. Helper-mediated fund/resolve remains preview-only pending the separately owned helper review and deployment.
+- On 2026-08-20, the locally configured app received the deployed helper address. The funding flow now sends its reviewed `withdraw → privacy_invoke(Deposit)` action directly to Ready instead of using Ready's previously rejected optional `strk20PrepareInvoke` preflight. `pnpm test` passed 14 tests; `pnpm lint` had no errors (one pre-existing warning in an untracked local deployment page); production build output was regenerated. The minimal mainnet funding handoff remains user-controlled.
+- On 2026-08-20, a retry with 0.27 spendable shielded USDC still returned `INVALID_REQUEST_PAYLOAD`, disproving the simple balance diagnosis. The request was found to contain an extra undocumented `api_version` member absent from starknet.js 10.4.0's official wrapper; Morrow now uses `account.strk20InvokeTransaction(actions)`. Shield errors/timeouts now trigger a 30-second account-indexed pool `Deposit` event reconciliation so a confirmed onchain shield is surfaced with its transaction hash.
+- Deeper inspection of installed Ready X 5.33.8 superseded the `api_version` diagnosis: Wallet API 0.10.3 allows that field, while Ready's literal invoke-calldata validator rejects leading-zero felts. Generated commitments and the padded USDC address were still sent as `0x02...` / `0x03...`; Morrow now canonicalizes every literal invoke felt and regression-tests this exact rejection boundary. Mainnet funding remains unverified pending one user-approved retry.
+- Mainnet funding transaction `0x02c68bd07c6cccb9f38588fb03fb9b6e203227c33e93b2000fe050b7854e75ea` succeeded in block 13,576,646 and locked 0.05 USDC, but Ready timed out and the old UI never surfaced the generated preimages. That milestone is active but not resolvable without those preimages. Funding is now a guarded two-step flow: generate/copy/confirm secrets before the wallet request, then reconcile timeout results from the commitment-indexed `MilestoneFunded` event.
+- Direct user report, 2026-08-20: Ready returned `INVALID_REQUEST_PAYLOAD` for the first live funding attempt before a transaction hash was created. Root cause: Morrow mixed decimal literals into helper calldata (`operation`, `expires_at`, and zero values), while Ready validates STRK20 request FELTs in canonical hexadecimal form. Funding and resolution calldata now normalize every literal to `0x` hexadecimal; a regression test covers the funding shape. The user must retry the minimal funding action.
+- Funding audit, 2026-08-20: the hexadecimal fix did not resolve Ready's rejection, so the earlier root-cause statement is superseded. The live pool fee is 6 STRK; Ready reported a 0.17 USDC-equivalent/private-token fee and only 0.13 spendable shielded USDC after shielding 0.30. Funding 0.05 with a comparable fee requires about 0.22 shielded USDC, making insufficient post-fee private value the current high-confidence diagnosis. `FUNDING_AUDIT.md` records the wallet, action-schema, deployed-class, constructor, token read-back, and remaining E2E evidence.
 
 ## Next
 
 1. Complete one minimal shield and confirm both ERC-20 approval and shield prompts plus note maturity.
 2. Atomic milestone preview is implemented. Do not represent claim/recovery atomicity as live until the project-owned helper is compiled, reviewed, deployed, and exercised.
 3. After shield confirmation and helper deployment, exercise the grant lifecycle app integration and its proof/read-back states.
-4. Separately install Cairo tooling, compile/test/audit the project-owned contract, then request fresh permission before any deployment or mainnet funding.
+4. Exercise a minimal helper-mediated pool operation from the app, then read back its milestone state and record the resulting third pool transaction.
 5. Before submission, replace every empty `strk20.json` field only with fresh live evidence and re-open official requirements.
