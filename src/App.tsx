@@ -34,6 +34,7 @@ import {
   fundActions,
   readMorrowConfig,
   readShieldToken,
+  raceWithTimeout,
   releaseActions,
   shieldActions,
   simulateActions,
@@ -217,7 +218,11 @@ function App() {
         const actions = fundActions(config, { ...preparedDraft, ...generated });
         if (rpcUrl) startingBlock = await latestBlockNumber(rpcUrl);
         try {
-          transactionHash = (await submitActions(account, actions)).transaction_hash;
+          transactionHash = (await raceWithTimeout(
+            submitActions(account, actions),
+            15_000,
+            "Ready accepted the request but did not return its result. Checking MorrowEscrow onchain…",
+          )).transaction_hash;
         } catch (error) {
           if (rpcUrl && startingBlock !== null) {
             setNotice({ tone: "warning", message: "Ready did not return a result. Checking MorrowEscrow for the prepared commitment…" });
@@ -492,7 +497,7 @@ function App() {
             <p>Verified Mainnet receipts are separated from lifecycle steps that still need proof.</p>
           </header>
           <div className="evidence-status" aria-label="Current evidence status">
-            <article><div><span>Pool activity</span><em className="evidence-state verified">Verified</em></div><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} receipts`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : "Two shield deposits and one milestone funding receipt are registered."}</p></article>
+            <article><div><span>Pool activity</span><em className="evidence-state verified">Verified</em></div><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} receipts`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : "Registered receipts include shield deposits and helper-mediated milestone funding."}</p></article>
             <article><div><span>Helper contract</span><em className="evidence-state live">Live</em></div><strong>Deployed</strong><p>Funding is proven on Mainnet. Claim and recovery still need their first receipts.</p></article>
             <article><div><span>Public demo</span><em className="evidence-state pending">Pending</em></div><strong>Not published</strong><p>The live URL and three-minute demo remain intentionally unclaimed.</p></article>
           </div>
