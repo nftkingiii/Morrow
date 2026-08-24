@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findMilestoneFunding, findShieldDeposit, poolEvidenceFromReceipt } from "./evidence";
+import { findMilestoneFunding, findMilestoneResolution, findShieldDeposit, poolEvidenceFromReceipt } from "./evidence";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -45,6 +45,17 @@ describe("public pool evidence", () => {
     })).toEqual({ hash: "0xfunded", blockNumber: 100, amount: "0.050000", kind: "milestone-funded" });
   });
 
+  it("classifies a succeeded helper resolution and preserves its claimed state", () => {
+    expect(poolEvidenceFromReceipt("0xclaimed", {
+      finality_status: "ACCEPTED_ON_L2", execution_status: "SUCCEEDED", block_number: 101,
+      events: [{
+        from_address: "0x073d8af97693e5744fb46c994e1cfabf9815e3044cdca6253e239d922f9bae3",
+        keys: ["0x0e1c89f14bdcf8dab60de3ccdedbd4d210d19ab23e1fc13c72ab83417bf8b4e", "0xabc"],
+        data: ["0x2"],
+      }],
+    })).toEqual({ hash: "0xclaimed", blockNumber: 101, kind: "milestone-claimed" });
+  });
+
   it("recovers a shield transaction from its account-indexed Deposit event", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       jsonrpc: "2.0",
@@ -81,6 +92,19 @@ describe("public pool evidence", () => {
       blockNumber: 100,
       amount: "0.050000",
       kind: "milestone-funded",
+    });
+  });
+
+  it("recovers a timed-out claim from the commitment-indexed resolution event", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "starknet_getEvents",
+      result: { events: [{ block_number: 101, transaction_hash: "0xclaimed", keys: ["0xevent", "0xabc"], data: ["0x2"] }] },
+    })));
+    await expect(findMilestoneResolution("https://rpc.invalid", "0xescrow", "0xabc", "claim", 90)).resolves.toEqual({
+      hash: "0xclaimed",
+      blockNumber: 101,
+      kind: "milestone-claimed",
     });
   });
 });

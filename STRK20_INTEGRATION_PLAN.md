@@ -46,6 +46,8 @@ Do not attribute private activity from transaction `sender`: that is the relayer
 
 Freshness check on 2026-08-14 found: get-starknet `next` moved to `6.0.4`; `packages/sub_account_anonymizer` disappeared; `packages/shadow_account_anonymizer` appeared; Wallet API stable remains `0.10.3`. Neither package-path change is required for Morrow's route.
 
+Freshness re-check on 2026-08-24 found: discovery `next` remains `6.0.4`, wallet-standard `next` moved to `6.0.5`, the sub-account/shadow-account path drift remains, and Wallet API stable is still `0.10.3` with `0.10.4-rc.1` in flight. Morrow keeps its exercised `6.0.3`/`0.10.3` pins for this transaction-state repair; dependency migration is a separate compatibility task.
+
 ## 5. Phase 1 — correct wallet connection and first shielded flow — connection gate complete 2026-08-15; shield gate pending
 
 Status: Ready X connected on Starknet Mainnet without a balance-consent prompt. The first minimal mainnet shield remains required before Phase 2.
@@ -60,9 +62,9 @@ Status: Ready X connected on Starknet Mainnet without a balance-consent prompt. 
 
 Manual gate remaining: complete one minimal mainnet shield and confirm both the ERC-20 approval and shield prompts plus note maturity. Unsupported-wallet degradation remains a later non-production check.
 
-## 6. Phase 2 — Morrow grant lifecycle in the app — helper live; funding handoff pending 2026-08-20
+## 6. Phase 2 — Morrow grant lifecycle in the app — funding and claim verified 2026-08-24
 
-Status: MorrowEscrow is declared and deployed on Mainnet at `0x073d8af97693e5744fb46c994e1cfabf9815e3044cdca6253e239d922f9bae3`. The local app is configured with that address and submits funding directly through Ready, bypassing `strk20PrepareInvoke` because Ready previously rejected that optional preflight for STRK20 actions. A wallet-approved minimal funding transaction remains the manual gate; claim and recovery are still unverified on Mainnet.
+Status: MorrowEscrow is declared and deployed on Mainnet at `0x073d8af97693e5744fb46c994e1cfabf9815e3044cdca6253e239d922f9bae3`. Funding and claim have succeeded through Ready and the live helper; recovery remains unverified on Mainnet. Because Ready completed both operations without settling the dapp promise, Morrow now bounds every wallet/RPC wait and reconciles funding and resolution from commitment-indexed helper events.
 
 1. Keep action construction in `src/lib/strk20.ts`; validate fixed pool, token, helper, chain, operation, amount, expiry, and felt inputs before wallet submission.
 2. In `src/App.tsx`, require the user to confirm they are using a mature shielded note before building `withdraw → privacy_invoke(Deposit)`. Submit the wallet action directly and present the helper's public amount/activity boundary; do not request a shielded-balance read solely to gate this action.

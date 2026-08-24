@@ -39,6 +39,7 @@ export type PrivateOperation = "claim" | "recover";
 
 const OPERATION = { deposit: "0x0", claim: "0x1", recover: "0x2" } as const;
 const WALLET_CONNECTION_TIMEOUT_MS = 30_000;
+const WALLET_METADATA_TIMEOUT_MS = 10_000;
 
 export function canonicalFelt(value: string): string {
   return `0x${BigInt(value).toString(16)}`;
@@ -145,7 +146,11 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
 
   let supportedVersions: string[];
   try {
-    supportedVersions = (await wallet.features["starknet:walletApi"].request({ type: "wallet_supportedWalletApi" })).map(String);
+    supportedVersions = (await raceWithTimeout(
+      wallet.features["starknet:walletApi"].request({ type: "wallet_supportedWalletApi" }),
+      WALLET_METADATA_TIMEOUT_MS,
+      "Ready did not return its supported Wallet API versions.",
+    )).map(String);
   } catch {
     throw new WalletConnectionError("unsupported-wallet", `${wallet.name} does not expose the STRK20 Privacy Wallet API. Use Ready for Phase 1.`);
   }
@@ -157,7 +162,11 @@ export async function connectPrivacyWallet(): Promise<PrivacyWalletConnection> {
     );
   }
 
-  const chainId = await wallet.features["starknet:walletApi"].request({ type: "wallet_requestChainId" });
+  const chainId = await raceWithTimeout(
+    wallet.features["starknet:walletApi"].request({ type: "wallet_requestChainId" }),
+    WALLET_METADATA_TIMEOUT_MS,
+    "Ready did not return its active network.",
+  );
   if (BigInt(chainId) !== BigInt(constants.StarknetChainId.SN_MAIN)) {
     throw new WalletConnectionError("wrong-network", "Morrow Phase 1 requires Starknet Mainnet. Switch the wallet network and reconnect.");
   }

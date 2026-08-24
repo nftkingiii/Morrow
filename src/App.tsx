@@ -26,7 +26,7 @@ import {
   type GrantSecrets,
 } from "./lib/grants";
 import { atomicMilestoneSteps, privacyPreflight, type FundingRoute } from "./lib/privacy";
-import { latestBlockNumber, reconcileMilestoneFunding, reconcileShieldDeposit, type PoolEvidence, verifyPoolTransactions } from "./lib/evidence";
+import { latestBlockNumber, reconcileMilestoneFunding, reconcileMilestoneResolution, reconcileShieldDeposit, type PoolEvidence, verifyPoolTransactions } from "./lib/evidence";
 import submission from "../strk20.json";
 import {
   connectPrivacyWallet,
@@ -83,7 +83,8 @@ function App() {
   const [shieldAmount, setShieldAmount] = useState("");
   const [fundingRoute, setFundingRoute] = useState<FundingRoute>("separate");
   const [shieldPending, setShieldPending] = useState(false);
-  const shieldRequestInFlight = useRef(false);
+  const transactionRequestInFlight = useRef(false);
+  const walletRequestInFlight = useRef(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -108,6 +109,8 @@ function App() {
   }, []);
 
   async function connect() {
+    if (walletRequestInFlight.current) return;
+    walletRequestInFlight.current = true;
     setNotice(null);
     try {
       setPending(true);
@@ -123,6 +126,7 @@ function App() {
       setWalletState(error instanceof WalletConnectionError ? error.reason : "connection-error");
       setNotice({ tone: "error", message: error instanceof Error ? error.message : "Wallet connection failed." });
     } finally {
+      walletRequestInFlight.current = false;
       setPending(false);
     }
   }
@@ -130,7 +134,7 @@ function App() {
   async function shield(event: FormEvent) {
     event.preventDefault();
     setNotice(null);
-    if (shieldRequestInFlight.current) return;
+    if (transactionRequestInFlight.current) return;
     if (!shieldToken) {
       setNotice({ tone: "error", message: "Set VITE_TOKEN_ADDRESS before shielding. Morrow fails closed when the token is unconfigured." });
       return;
@@ -149,16 +153,22 @@ function App() {
     try {
       // React state does not disable a second click synchronously. This ref is
       // set before the first await so only one wallet request can be created.
-      shieldRequestInFlight.current = true;
+      transactionRequestInFlight.current = true;
       setShieldPending(true);
       const actions = shieldActions(shieldToken, shieldAmount);
       const [depositAction] = actions;
       if (depositAction.type !== "deposit") throw new Error("Morrow built an invalid shield request.");
       submittedAmount = depositAction.amount;
-      if (rpcUrl) startingBlock = await latestBlockNumber(rpcUrl);
+      if (rpcUrl) {
+        try { startingBlock = await latestBlockNumber(rpcUrl); } catch { startingBlock = null; }
+      }
       // Submit the documented action directly; the wallet handles proof creation
       // and shows an explicit transaction approval.
-      const result = await submitActions(account, actions);
+      const result = await raceWithTimeout(
+        submitActions(account, actions),
+        15_000,
+        "Ready accepted the shield request but did not return its result. Checking the STRK20 pool onchain…",
+      );
       setShieldAmount("");
       setNotice({ tone: "success", message: `Shield submitted: ${truncate(result.transaction_hash, 10, 8)}. Wait about 10 blocks before using the new note.` });
     } catch (error) {
@@ -178,7 +188,7 @@ function App() {
       }
       setNotice({ tone: "error", message: `${describeStrk20Error(error)} No matching onchain deposit was found during the 30-second reconciliation window; check Ready activity before retrying.` });
     } finally {
-      shieldRequestInFlight.current = false;
+      transactionRequestInFlight.current = false;
       setShieldPending(false);
     }
   }
@@ -208,6 +218,8 @@ function App() {
       return;
     }
 
+    if (transactionRequestInFlight.current) return;
+    transactionRequestInFlight.current = true;
     setPending(true);
     const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
     let startingBlock: number | null = null;
@@ -216,7 +228,9 @@ function App() {
       let transactionHash: string | undefined;
       if (config && account) {
         const actions = fundActions(config, { ...preparedDraft, ...generated });
-        if (rpcUrl) startingBlock = await latestBlockNumber(rpcUrl);
+        if (rpcUrl) {
+          try { startingBlock = await latestBlockNumber(rpcUrl); } catch { startingBlock = 0; }
+        }
         try {
           transactionHash = (await raceWithTimeout(
             submitActions(account, actions),
@@ -258,39 +272,71 @@ function App() {
           : "Preview created locally. Connect a configured privacy wallet to fund on mainnet.",
       });
     } catch (error) {
-      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Grant creation failed." });
+      const message = error instanceof Error ? error.message : "Grant creation failed.";
+      setNotice({ tone: "error", message: `${message} No matching onchain funding event was found; check Ready activity before retrying.` });
     } finally {
+      transactionRequestInFlight.current = false;
       setPending(false);
     }
   }
 
   async function release(operation: "claim" | "recover") {
+    if (transactionRequestInFlight.current) return;
     setNotice(null);
     if (!claimCommitment.trim() || !claimSecret.trim()) {
       setNotice({ tone: "error", message: "Enter both the milestone commitment and the matching secret." });
       return;
     }
+    transactionRequestInFlight.current = true;
     setPending(true);
+    const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL?.trim();
+    const normalizedCommitment = claimCommitment.trim();
+    let startingBlock = 0;
     try {
       let transactionHash: string | undefined;
       if (config && account) {
-        const actions = releaseActions(config, account.address, operation, claimCommitment.trim(), claimSecret.trim());
-        await simulateActions(account, actions);
-        transactionHash = (await submitActions(account, actions)).transaction_hash;
+        const actions = releaseActions(config, account.address, operation, normalizedCommitment, claimSecret.trim());
+        await raceWithTimeout(
+          simulateActions(account, actions),
+          30_000,
+          "Ready did not finish preparing this operation. No transaction was submitted; close Ready and retry.",
+        );
+        if (rpcUrl) {
+          try { startingBlock = await latestBlockNumber(rpcUrl); } catch { startingBlock = 0; }
+        }
+        try {
+          transactionHash = (await raceWithTimeout(
+            submitActions(account, actions),
+            15_000,
+            `Ready accepted the ${operation} request but did not return its result. Checking MorrowEscrow onchain…`,
+          )).transaction_hash;
+        } catch (error) {
+          if (rpcUrl) {
+            setNotice({ tone: "warning", message: `Ready did not return a ${operation} result. Checking MorrowEscrow for the resolution event…` });
+            const recovered = await reconcileMilestoneResolution(rpcUrl, config.escrowAddress, normalizedCommitment, operation, startingBlock);
+            if (recovered) {
+              transactionHash = recovered.hash;
+              setPoolEvidence((current) => current?.some((entry) => entry.hash === recovered.hash) ? current : [...(current ?? []), recovered]);
+            }
+          }
+          if (!transactionHash) throw error;
+        }
       }
-      setGrants((current) => current.map((grant) => grant.claimCommitment === claimCommitment
+      setGrants((current) => current.map((grant) => grant.claimCommitment === normalizedCommitment
         ? { ...grant, status: operation === "claim" ? "claimed" : "recovered", transactionHash: transactionHash ?? grant.transactionHash }
         : grant));
       setClaimSecret("");
       setNotice({
         tone: transactionHash ? "success" : "warning",
         message: transactionHash
-          ? `${operation === "claim" ? "Claim" : "Recovery"} submitted through STRK20.`
+          ? `${operation === "claim" ? "Claim" : "Recovery"} confirmed through STRK20: ${truncate(transactionHash, 10, 8)}.`
           : `${operation === "claim" ? "Claim" : "Recovery"} preview completed locally; no transaction was sent.`,
       });
     } catch (error) {
-      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Private operation failed." });
+      const message = error instanceof Error ? error.message : "Private operation failed.";
+      setNotice({ tone: "error", message: `${message} No matching onchain resolution event was found; check Ready activity before retrying.` });
     } finally {
+      transactionRequestInFlight.current = false;
       setPending(false);
     }
   }
@@ -497,17 +543,17 @@ function App() {
             <p>Verified Mainnet receipts are separated from lifecycle steps that still need proof.</p>
           </header>
           <div className="evidence-status" aria-label="Current evidence status">
-            <article><div><span>Pool activity</span><em className="evidence-state verified">Verified</em></div><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} receipts`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : "Registered receipts include shield deposits and helper-mediated milestone funding."}</p></article>
-            <article><div><span>Helper contract</span><em className="evidence-state live">Live</em></div><strong>Deployed</strong><p>Funding is proven on Mainnet. Claim and recovery still need their first receipts.</p></article>
-            <article><div><span>Public demo</span><em className="evidence-state pending">Pending</em></div><strong>Not published</strong><p>The live URL and three-minute demo remain intentionally unclaimed.</p></article>
+            <article><div><span>Pool activity</span><em className="evidence-state verified">Verified</em></div><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} receipts`}</strong><p>{poolEvidence === null ? "Reading public STRK20 receipts." : "Registered receipts include shields, helper funding, and a completed claim."}</p></article>
+            <article><div><span>Helper contract</span><em className="evidence-state live">Live</em></div><strong>Deployed</strong><p>Funding and claim are proven on Mainnet. Recovery still needs its first receipt.</p></article>
+            <article><div><span>Public demo</span><em className="evidence-state live">Live</em></div><strong>Published</strong><p>The Railway app is public; the three-minute demo video remains pending.</p></article>
           </div>
           <section className="proof-ledger" aria-labelledby="proof-ledger-title">
-            <div className="proof-ledger-title"><div><span>Onchain receipts</span><h3 id="proof-ledger-title">Mainnet activity</h3></div><strong>{poolEvidence?.length ?? 0} / 3 verified</strong></div>
+            <div className="proof-ledger-title"><div><span>Onchain receipts</span><h3 id="proof-ledger-title">Mainnet activity</h3></div><strong>{poolEvidence === null ? "Checking…" : `${poolEvidence.length} verified · requirement met`}</strong></div>
             <div className="proof-ledger-columns" aria-hidden="true"><span>Proof</span><span>Amount</span><span>Block</span><span>Transaction</span><span>Status</span></div>
             {poolEvidence === null ? <div className="proof-ledger-empty">Checking Starknet receipts…</div> : poolEvidence.length === 0 ? <div className="proof-ledger-empty">No registered receipt could be verified.</div> : poolEvidence.map((entry, index) => (
               <a key={entry.hash} className="proof-ledger-row" href={`${config?.explorerBaseUrl ?? "https://starkscan.co"}/tx/${entry.hash}`} target="_blank" rel="noreferrer">
-                <span className="proof-kind"><i>{String(index + 1).padStart(2, "0")}</i><b>{entry.kind === "shield" ? "Shield deposit" : "Milestone funding"}</b></span>
-                <span data-label="Amount">{entry.amount} USDC</span><span data-label="Block">#{entry.blockNumber.toLocaleString()}</span>
+                <span className="proof-kind"><i>{String(index + 1).padStart(2, "0")}</i><b>{entry.kind === "shield" ? "Shield deposit" : entry.kind === "milestone-funded" ? "Milestone funding" : entry.kind === "milestone-claimed" ? "Milestone claimed" : "Milestone recovered"}</b></span>
+                <span data-label="Amount">{entry.amount ? `${entry.amount} USDC` : "Resolved"}</span><span data-label="Block">#{entry.blockNumber.toLocaleString()}</span>
                 <span className="mono" data-label="Transaction">{truncate(entry.hash, 10, 8)} <ArrowRight size={13} /></span><em className="evidence-state verified">Verified</em>
               </a>
             ))}
@@ -515,8 +561,8 @@ function App() {
           <div className="proof-subhead"><span>Lifecycle coverage</span><p>What the current evidence proves—and what remains to be exercised.</p></div>
           <div className="proof-grid">
             <article><span>01 · Verified</span><LockKeyhole /><h3>Shielded balance</h3><p>Two successful deposits establish usable private USDC in the STRK20 pool.</p></article>
-            <article><span>02 · Verified</span><FileCheck2 /><h3>Milestone funding</h3><p>The helper locked 0.05 USDC against a public claim commitment on Mainnet.</p></article>
-            <article className="proof-pending"><span>03 · Pending</span><RotateCcw /><h3>Claim or recovery</h3><p>The release paths are implemented, but neither has a first Mainnet receipt yet.</p></article>
+            <article><span>02 · Verified</span><FileCheck2 /><h3>Milestone funding</h3><p>Two helper-mediated funding receipts lock USDC against public commitments on Mainnet.</p></article>
+            <article><span>03 · Verified</span><RotateCcw /><h3>Private claim</h3><p>A recipient claim resolved the milestone into a private open note; recovery remains unverified.</p></article>
           </div>
         </section> : null}
       </main>
