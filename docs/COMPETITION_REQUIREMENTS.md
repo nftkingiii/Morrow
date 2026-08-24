@@ -8,10 +8,10 @@ Source audit: 2026-08-15. This is a working checklist, not a substitute for reop
 | --- | --- | --- |
 | One registration pull request with public repository and Telegram | Verified | Upstream registration was applied as commit `b5fe114`; PR [#18](https://github.com/starkience/strk20-hackathon/pull/18) is closed because the entry landed upstream. |
 | Public, open-source repository with a license | Partial | Repository is public and contains an MIT license; recheck public access at submission. |
-| Public live demo | Missing | A clean-browser URL and deployed revision/read-back. |
-| Three successful Starknet **mainnet** transactions touching the STRK20 pool | Partial | Two wallet-led USDC shields in root `strk20.json`, independently checked against the canonical pool; one more successful pool transaction is required. |
-| Contract addresses, if deployed | Missing | Add verified addresses to `strk20.json`. |
-| Three-minute demo video | Missing | Add the public link to `strk20.json`. |
+| Public live demo | Verified | Railway production URL and deployed revision/read-back. |
+| Three successful Starknet **mainnet** transactions touching the STRK20 pool | Verified | Five successful pool receipts are registered; three also contain a MorrowEscrow event. |
+| Contract addresses, if deployed | Verified | The deployed MorrowEscrow address is recorded in `strk20.json`. |
+| Three-minute demo video | Verified locally | The 2:54 H.264/AAC explainer is declared at the Railway `/morrow-demo.mp4` URL; verify the public asset after deployment. |
 | Documentation and open source | Partial | README, threat model, proof matrix, source index, and this checklist are present; live evidence is still absent. |
 
 The sprint rubric is 30% STRK20 depth, 30% real working mainnet product, 25% innovation, and 15% README/open source. The final sprint deadline stated in the official README is 2026-08-31 23:59 UTC.
@@ -24,11 +24,9 @@ Morrow is not claiming ownership of a sprint prompt. The project is a non-exclus
 
 ## Submission procedure still required
 
-1. Deploy a public demo and verify its actual revision and loaded assets from a clean browser.
-2. Complete one additional successful **mainnet** wallet-led interaction that touches the canonical STRK20 pool. Do not substitute simulated, scripted, testnet, or merely included transactions.
-3. Add only the resulting hashes, deployed contract addresses, demo video, and (only if auto-discovery fails) demo URL to root `strk20.json`.
-4. Record direct explorer/read-back proof in the proof matrix. The transaction sender may be a relayer; use the pool's `Deposit` event first indexed key for deposit attribution rather than transaction sender.
-5. Record a muted, three-minute demo that visibly shows the decision, STRK20 wallet action, and resulting evidence.
+1. Verify the deployed video asset and final Railway revision from a clean browser.
+2. Reopen the official rules immediately before the deadline and confirm the hub detects the video and five registered transactions.
+3. Keep the transaction and contract read-back evidence aligned with root `strk20.json`.
 
 ## Canonical configuration
 

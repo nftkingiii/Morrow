@@ -13,3 +13,5 @@ contracts/.snfoundry_cache/
 /src/deploy-morrow.tsx
 /scripts/declare-helper.mjs
 /morrow-logo-preview.png
+/demo/render/
+/demo/morrow-demo*.mp4
