@@ -1,0 +1,159 @@
+1
+00:00:00,300 --> 00:00:05,200
+Morrow is a private milestone grant system
+built on Starknet Mainnet with STRK20.
+
+2
+00:00:05,200 --> 00:00:10,500
+Grant terms stay inspectable, while the public link
+to the person receiving the funds is broken.
+
+3
+00:00:11,100 --> 00:00:16,700
+Grant transparency often becomes
+wallet surveillance.
+
+4
+00:00:16,700 --> 00:00:23,300
+A normal payout reveals the funder, recipient,
+amount, timing, and future wallet activity.
+
+5
+00:00:23,300 --> 00:00:28,700
+Morrow separates accountability from identity.
+The terms stay public. The recipient does not.
+
+6
+00:00:29,400 --> 00:00:34,300
+Before any transaction, Morrow explains
+the privacy trade-off.
+
+7
+00:00:34,300 --> 00:00:40,300
+Shield USDC separately, wait for note maturity,
+then fund from an existing private balance.
+
+8
+00:00:40,300 --> 00:00:44,600
+Morrow names every public edge—without inventing
+a live anonymity score.
+
+9
+00:00:45,200 --> 00:00:49,700
+Funding is one consequential action.
+
+10
+00:00:49,700 --> 00:00:55,500
+STRK20 withdraws from a private balance
+and invokes MorrowEscrow in one action batch.
+
+11
+00:00:55,500 --> 00:01:01,100
+The withdrawal and milestone lock succeed together,
+or the entire operation reverts.
+
+12
+00:01:01,800 --> 00:01:06,400
+Each milestone has two locally generated secrets.
+
+13
+00:01:06,400 --> 00:01:11,900
+The recipient gets the claim secret.
+The operator keeps the recovery secret.
+
+14
+00:01:11,900 --> 00:01:17,900
+They are shown once and acknowledged—
+never placed on-chain with a recipient address.
+
+15
+00:01:18,700 --> 00:01:23,600
+The claimant provides the public commitment
+and matching secret.
+
+16
+00:01:23,600 --> 00:01:29,300
+MorrowEscrow verifies it and changes
+the milestone state once.
+
+17
+00:01:29,300 --> 00:01:33,900
+STRK20 creates the private output without naming
+the owner of the resulting note.
+
+18
+00:01:34,500 --> 00:01:39,600
+This is not only a prototype story.
+Morrow has three helper-mediated Mainnet proofs.
+
+19
+00:01:39,600 --> 00:01:45,600
+Two transactions funded milestones through
+the STRK20 pool and MorrowEscrow.
+
+20
+00:01:45,600 --> 00:01:51,300
+A third claimed a milestone, emitted its event,
+and read back as claimed from the contract.
+
+21
+00:01:51,900 --> 00:01:56,400
+The Evidence workspace makes that proof
+easy to inspect.
+
+22
+00:01:56,400 --> 00:02:02,100
+Transactions are checked for successful execution
+and the expected pool or helper event.
+
+23
+00:02:02,100 --> 00:02:06,700
+Morrow shows the block and links directly
+to each public receipt.
+
+24
+00:02:07,300 --> 00:02:12,100
+The interface also handles a real
+wallet failure mode.
+
+25
+00:02:12,100 --> 00:02:17,400
+Ready can complete a transaction on-chain
+while its browser promise remains pending.
+
+26
+00:02:17,400 --> 00:02:23,200
+Morrow checks the matching event and recovers
+the confirmed hash instead of spinning forever.
+
+27
+00:02:23,900 --> 00:02:28,700
+The privacy boundary is deliberately precise.
+
+28
+00:02:28,700 --> 00:02:34,900
+Terms, amounts, deadlines, helper activity,
+and timing remain public.
+
+29
+00:02:34,900 --> 00:02:40,100
+Recipient identity, note ownership, and later
+private movement stay inside STRK20.
+
+30
+00:02:40,100 --> 00:02:42,200
+Morrow does not promise perfect anonymity.
+
+31
+00:02:42,800 --> 00:02:47,700
+Morrow turns milestone funding into
+a simple proposition:
+
+32
+00:02:47,700 --> 00:02:51,600
+Fund the work—not the surveillance.
+
+33
+00:02:51,600 --> 00:02:54,500
+Open source. Starknet Mainnet.
+Available now on Railway.

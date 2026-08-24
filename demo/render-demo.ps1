@@ -46,6 +46,11 @@ $rawPath = Join-Path $demoRoot "morrow-demo-raw.mp4"
 
 # Synthetic narration is intentionally generated slowly for clarity, then the
 # whole cut is tightened to stay below the sprint's three-minute limit.
+$uncaptionedPath = Join-Path $demoRoot "morrow-demo-uncaptioned.mp4"
+& $FfmpegPath -y -i $rawPath -filter_complex "[0:v]setpts=PTS/1.35[v];[0:a]atempo=1.35[a]" -map "[v]" -map "[a]" -c:v libx264 -preset veryfast -crf 19 -c:a aac -b:a 160k -movflags +faststart $uncaptionedPath | Out-Null
+
+$captionPath = (Join-Path $demoRoot "captions.srt").Replace("\", "/")
+$captionFilter = "subtitles=filename='$captionPath':force_style='FontName=Arial,FontSize=14,PrimaryColour=&H00FFFFFF,BackColour=&HCC0B1611,BorderStyle=3,Outline=1,Shadow=0,MarginV=38,Alignment=2'"
 $outputPath = Join-Path $demoRoot "morrow-demo-3min.mp4"
-& $FfmpegPath -y -i $rawPath -filter_complex "[0:v]setpts=PTS/1.35[v];[0:a]atempo=1.35[a]" -map "[v]" -map "[a]" -c:v libx264 -preset veryfast -crf 19 -c:a aac -b:a 160k -movflags +faststart $outputPath | Out-Null
+& $FfmpegPath -y -i $uncaptionedPath -vf $captionFilter -c:v libx264 -preset veryfast -crf 19 -c:a copy -movflags +faststart $outputPath | Out-Null
 Write-Output $outputPath
