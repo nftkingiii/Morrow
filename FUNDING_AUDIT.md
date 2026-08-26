@@ -38,7 +38,7 @@ This field-level mismatch is now fixed and regression-tested, but a successful h
 - The app does not request shielded-balance access and therefore cannot pre-calculate spendable value without adding a deliberate wallet-consent feature.
 - Contract tests exercise the helper with a mocked pool caller; a full pool-to-helper end-to-end test is still missing.
 - Mainnet claim and recovery remain unverified.
-- The helper has not received independent source verification or audit.
+- The checked-in production source rebuilds to the deployed Mainnet class hash under Scarb/Cairo 2.17.0. Explorer publication remains externally blocked and the helper has not received an independent audit; see `contracts/VERIFICATION.md`.
 
 ## Safe next verification
 

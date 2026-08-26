@@ -45,7 +45,7 @@ Ship a judge-openable Starknet mainnet application whose core decision is a trut
 
 ## Unverified / blocked
 
-- The helper is deployed; source verification, independent review, claim/recovery read-back, and a three-minute demo video remain outstanding.
+- The helper is deployed. A clean Scarb/Cairo 2.17.0 production rebuild computes exactly the deployed class hash, but explorer source publication remains blocked by Voyager's remote compiler and Walnut's corrupted server-side Scarb cache; see `contracts/VERIFICATION.md`. Independent review and recovery read-back remain outstanding.
 - `pnpm audit` reports one low-severity, development-only `esbuild` advisory on Windows (GHSA-g7r4-m6w7-qqqr); no high or critical advisory was reported. Reassess when a compatible Vite/esbuild update is available.
 
 ## Latest local verification

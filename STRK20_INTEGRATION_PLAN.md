@@ -79,7 +79,7 @@ Manual gate: fund one milestone through the configured helper, claim a separate 
 
 ## 7. Phase 3 — project-owned anonymizer review and deployment — deployed 2026-08-20
 
-Status: outside skill execution; project-owned. The class was declared as `0x695446733d19b87147bf2d8e46b8bcbbc8d300692d244db974903d961762cb6` and deployed on Mainnet. The deployment transaction is `0x527ea3b3f62bcbc3ee1106ecd32f37015143cc99c17b5b62f1a7259773ce77a`, `ACCEPTED_ON_L2`, and `SUCCEEDED`; public read-back confirms the accepted token is Circle USDC. Independent audit and source verification remain open.
+Status: outside skill execution; project-owned. The class was declared as `0x695446733d19b87147bf2d8e46b8bcbbc8d300692d244db974903d961762cb6` and deployed on Mainnet. The deployment transaction is `0x527ea3b3f62bcbc3ee1106ecd32f37015143cc99c17b5b62f1a7259773ce77a`, `ACCEPTED_ON_L2`, and `SUCCEEDED`; public read-back confirms the accepted token is Circle USDC. A clean Scarb/Cairo 2.17.0 rebuild matches the deployed class hash exactly. Explorer publication remains blocked by provider infrastructure and independent audit remains open; see `contracts/VERIFICATION.md`.
 
 - Entry criterion: Phase 1 works with Ready and the exact Wallet API action/calldata contract has been confirmed against current docs.
 - Review `contracts/src/morrow_escrow.cairo` against the official anonymizer anatomy and shipped Ekubo/Vesu reference packages; the unofficial escrow page may inform the pattern but is not a shipped or audited dependency.
